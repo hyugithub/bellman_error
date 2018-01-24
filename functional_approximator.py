@@ -83,30 +83,31 @@ train_step = tf.train.AdagradOptimizer(0.3).minimize(loss)
 #gw = tf.gradients(loss, weights)
 #gb = tf.gradients(loss, bias)
 
-#generate data for LHS
-#state_lhs = tf.placeholder(tf.float32, [batch_size, dim_state_space])
-data_lhs = np.random.choice(capacity+1, [batch_size, num_nights])
-time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])
-data_lhs = np.hstack([data_lhs, time_lhs])
-
-#derive RHS
-# after consuming every product, what's the RHS
-#batch x product x night(state)
-#resource_consumed = np.swapaxes(np.tile(product_resource_map, (batch_size,1,1)), 1,2)
-resource_consumed = np.tile(product_resource_map, (batch_size,1,1))
-data_rhs = np.reshape(data_lhs, (batch_size,num_product,-1)) - resource_consumed
-data_mask = (1-np.any(data_rhs<0, axis=2)).astype(int)
-
-data_rhs = np.maximum(data_rhs ,0)
-time_rhs = time_lhs-1
-time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))
-data_rhs = np.concatenate([data_rhs, time_rhs], axis=2)
-
+num_batches = 200
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())
-    result = sess.run([loss]
-            , feed_dict={state_lhs: data_lhs,
-                         state_rhs: data_rhs,
-                         mask: data_mask
-                         })
-    print(result)
+    for batch in range(num_batches):
+        #generate data for LHS
+        #state_lhs = tf.placeholder(tf.float32, [batch_size, dim_state_space])
+        data_lhs = np.random.choice(capacity+1, [batch_size, num_nights])
+        time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])
+        data_lhs = np.hstack([data_lhs, time_lhs])
+        
+        #derive RHS
+        # after consuming every product, what's the RHS
+        #batch x product x night(state)
+        #resource_consumed = np.swapaxes(np.tile(product_resource_map, (batch_size,1,1)), 1,2)
+        resource_consumed = np.tile(product_resource_map, (batch_size,1,1))
+        data_rhs = np.reshape(data_lhs, (batch_size,num_product,-1)) - resource_consumed
+        data_mask = (1-np.any(data_rhs<0, axis=2)).astype(int)
+        
+        data_rhs = np.maximum(data_rhs ,0)
+        time_rhs = time_lhs-1
+        time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))
+        data_rhs = np.concatenate([data_rhs, time_rhs], axis=2)        
+        result,_ = sess.run([loss, train_step]
+                , feed_dict={state_lhs: data_lhs,
+                             state_rhs: data_rhs,
+                             mask: data_mask
+                             })
+        print(result)
