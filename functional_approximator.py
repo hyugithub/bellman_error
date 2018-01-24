@@ -17,8 +17,8 @@ class error_model_linear:
         self.value_rhs_2 = tf.constant(0.0, dtype=tf.float32)
         
         #TODO: tune thse two parameters
-        self.lambda_s0 = 1.0
-        self.lambda_t0 = 1.0
+        self.lambda_s0 = 1e-3
+        self.lambda_t0 = 1e-3
         
     #we also need to define boundary conditions for V(s,0) = 0
     def generate_boundary_error(self,s):
