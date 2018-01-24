@@ -4,13 +4,16 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
+import time
+
+ts = time.time()
 
 ops.reset_default_graph()
 np.set_printoptions(precision=4)
 np.random.seed(4321)
 
-num_nights = 3
-capacity = 7
+num_nights = 4
+capacity = 10
 # the true number of products is num_nights-1 because every products 
 # take a 2-night stay
 # product zero is the no-revenue no resource product
@@ -46,7 +49,7 @@ dim_state_space = num_nights+1
 
 state_lhs = tf.placeholder(tf.float32, [batch_size, dim_state_space])
 #RHS is the value function for relevant states at time t-1
-state_rhs = tf.placeholder(tf.float32, [batch_size, num_product, dim_state_space])
+state_rhs_1 = tf.placeholder(tf.float32, [batch_size, num_product, dim_state_space])
 mask = tf.placeholder(tf.float32, [batch_size, num_product])
 #probability
 
@@ -59,31 +62,33 @@ value_lhs = tf.multiply(state_lhs, weights)
 value_lhs = tf.reduce_sum(value_lhs, axis=1) + bias
 
 #define RHS
-value_rhs = tf.multiply(state_rhs, weights)
+value_rhs = tf.multiply(state_rhs_1, weights)
 #we need the mask here because certain products are unsellable given
 #a certain state. To implement this logic, we do two things:
 # 1. setting mask = 0 for such state/product combination
 # 2. in data preparation setting that state to 0 
 #in this way, no error should come up in approximator
 #and no impact on gradient estimator
-value_rhs = tf.multiply(mask, tf.reduce_sum(value_rhs, axis=2) + bias)
+#value_rhs = tf.multiply(mask, tf.reduce_sum(value_rhs, axis=2) + bias)
+value_rhs = tf.reduce_sum(value_rhs, axis=2) + bias
 value_rhs = tf.maximum(value_rhs + 
                        tf.constant(product_revenue, dtype=tf.float32) - 
                        tf.reshape(value_lhs, [-1,1]), tf.constant(0.0))
+value_rhs = tf.multiply(value_rhs, mask)
 value_rhs = tf.multiply(value_rhs
                         , tf.constant(product_prob
                                       , dtype=tf.float32))
 value_rhs = tf.reduce_sum(value_rhs, axis=1)
 
 bellman_error = value_lhs-value_rhs
-loss = tf.reduce_sum(tf.multiply(bellman_error,bellman_error))
+loss = tf.reduce_mean(tf.multiply(bellman_error,bellman_error))
 
 train_step = tf.train.AdagradOptimizer(0.3).minimize(loss)    
 
 #gw = tf.gradients(loss, weights)
 #gb = tf.gradients(loss, bias)
 
-num_batches = 200
+num_batches = 2500
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())
     for batch in range(num_batches):
@@ -105,9 +110,13 @@ with tf.Session() as sess:
         time_rhs = time_lhs-1
         time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))
         data_rhs = np.concatenate([data_rhs, time_rhs], axis=2)        
-        result,_ = sess.run([loss, train_step]
+        result, result_weights, result_bias, _ = sess.run([loss, weights, bias, train_step]
                 , feed_dict={state_lhs: data_lhs,
-                             state_rhs: data_rhs,
+                             state_rhs_1: data_rhs,
                              mask: data_mask
                              })
-        print(result)
+        if batch % 100 == 0:    
+            print("batch = ", batch, " result = %.2f"%result)
+            print("weights = ", result_weights, " bias = ", result_bias)
+
+print("total program time = %.2f seconds" % (time.time()-ts))
