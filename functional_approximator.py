@@ -6,55 +6,69 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 import time
 
-#we also need to define boundary conditions for V(s,0) = 0
-def generate_boundary_error(s, weights, bias):
-    weights_t0 = tf.multiply(weights, tf.constant(np.concatenate([np.ones(num_nights), np.zeros(1)]), dtype=tf.float32))
-    v_t0 = tf.reduce_sum(tf.multiply(state_lhs, weights_t0), axis=1) + bias
-    
-    lambda_t0 = 1.0
-    boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(lambda_t0, dtype=tf.float32))
-    
-    #V(0,t) = 0
-    weights_s0 = tf.multiply(weights, tf.constant(np.concatenate([np.zeros(num_nights), np.ones(1)]), dtype=tf.float32))
-    v_s0 = tf.reduce_sum(tf.multiply(state_lhs, weights_s0), axis=1) + bias
-    
-    lambda_s0 = 1.0
-    boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(lambda_s0, dtype=tf.float32))
-    return boundary_t0 + boundary_s0
+class error_model_linear:
+    def __init__(self):
+        self.weights = tf.Variable(np.random.uniform(size=[dim_state_space]), dtype=tf.float32)
+        self.bias = tf.Variable(np.random.uniform(size=1), dtype=tf.float32)
+        self.boundary_error = tf.constant(0.0, dtype=tf.float32)
+        self.bellman_error = tf.constant(0.0, dtype=tf.float32)
+        self.value_lhs = tf.constant(0.0, dtype=tf.float32)
+        self.value_rhs_1 = tf.constant(0.0, dtype=tf.float32)
+        self.value_rhs_2 = tf.constant(0.0, dtype=tf.float32)
+        
+    #we also need to define boundary conditions for V(s,0) = 0
+    def generate_boundary_error(self,s):
+        weights_t0 = tf.multiply(self.weights, tf.constant(np.concatenate([np.ones(num_nights), np.zeros(1)]), dtype=tf.float32))
+        v_t0 = tf.reduce_sum(tf.multiply(state_lhs, weights_t0), axis=1) + self.bias
+        
+        lambda_t0 = 1.0
+        boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(lambda_t0, dtype=tf.float32))
+        
+        #V(0,t) = 0
+        weights_s0 = tf.multiply(self.weights, tf.constant(np.concatenate([np.zeros(num_nights), np.ones(1)]), dtype=tf.float32))
+        v_s0 = tf.reduce_sum(tf.multiply(state_lhs, weights_s0), axis=1) + self.bias
+        
+        lambda_s0 = 1.0
+        boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(lambda_s0, dtype=tf.float32))
+        self.boundary_error = boundary_t0 + boundary_s0
+        return self.boundary_error
 
-def generate_bellman_error():
-    #define LHS
-    value_lhs = tf.reduce_sum(tf.multiply(state_lhs, weights), axis=1) + bias
-    
-    #V(s,t-1) as a matrix of batch x 1
-    value_rhs_2 = tf.reduce_sum(tf.multiply(state_rhs_2, weights), axis=1) + bias
-    
-    # this is a long definition for the sum max calculation done in multiple steps
-    #V(s-a(p),t-1) for every p, dimension is batch x product
-    value_rhs_1 = tf.reduce_sum(tf.multiply(state_rhs_1, weights), axis=2) + bias
-    #V(s-a(p),t-1) - V(s,t-1) + r(p)
-    value_rhs_1 = value_rhs_1 - tf.reshape(value_rhs_2, [batch_size,-1]) + tf.constant(product_revenue, dtype=tf.float32)
-    # max(x,0)
-    value_rhs_1 = tf.maximum(value_rhs_1, tf.constant(0.0))
-    #we need the mask here because certain products are unsellable given
-    #a certain state. To implement this logic, we do two things:
-    # 1. setting mask = 0 for such state/product combination
-    # 2. in data preparation setting that state to 0 
-    #in this way, no error should come up in approximator
-    #and no impact on gradient estimator
-    value_rhs_1 = tf.multiply(value_rhs_1, mask)
-    #prob*max
-    value_rhs_1 = tf.multiply(value_rhs_1
-                            , tf.constant(product_prob
-                                          , dtype=tf.float32))
-    #sum (prob*max)
-    value_rhs_1 = tf.reduce_sum(value_rhs_1, axis=1)
-    #V(s,t-1) + sum pr*max(*)
-    value_rhs = value_rhs_1 + value_rhs_2
-    
-    bellman_error = value_lhs-value_rhs
-    return tf.reduce_mean(tf.multiply(bellman_error,bellman_error)), value_lhs, value_rhs_1, value_rhs_2
-
+    def generate_bellman_error(self):
+        #define LHS
+        value_lhs = tf.reduce_sum(tf.multiply(state_lhs, self.weights), axis=1) + self.bias
+        
+        #V(s,t-1) as a matrix of batch x 1
+        value_rhs_2 = tf.reduce_sum(tf.multiply(state_rhs_2, self.weights), axis=1) + self.bias
+        
+        # this is a long definition for the sum max calculation done in multiple steps
+        #V(s-a(p),t-1) for every p, dimension is batch x product
+        value_rhs_1 = tf.reduce_sum(tf.multiply(state_rhs_1, self.weights), axis=2) + self.bias
+        #V(s-a(p),t-1) - V(s,t-1) + r(p)
+        value_rhs_1 = value_rhs_1 - tf.reshape(value_rhs_2, [batch_size,-1]) + tf.constant(product_revenue, dtype=tf.float32)
+        # max(x,0)
+        value_rhs_1 = tf.maximum(value_rhs_1, tf.constant(0.0))
+        #we need the mask here because certain products are unsellable given
+        #a certain state. To implement this logic, we do two things:
+        # 1. setting mask = 0 for such state/product combination
+        # 2. in data preparation setting that state to 0 
+        #in this way, no error should come up in approximator
+        #and no impact on gradient estimator
+        value_rhs_1 = tf.multiply(value_rhs_1, mask)
+        #prob*max
+        value_rhs_1 = tf.multiply(value_rhs_1
+                                , tf.constant(product_prob
+                                              , dtype=tf.float32))
+        #sum (prob*max)
+        value_rhs_1 = tf.reduce_sum(value_rhs_1, axis=1)
+        #V(s,t-1) + sum pr*max(*)
+        value_rhs = value_rhs_1 + value_rhs_2
+        
+        bellman_error = value_lhs-value_rhs
+        self.bellman_error = tf.reduce_mean(tf.multiply(bellman_error,bellman_error))
+        self.value_lhs = value_lhs 
+        self.value_rhs_1 = value_rhs_1
+        self.value_rhs_2 = value_rhs_2
+        return self.bellman_error, self.value_lhs, self.value_rhs_1, self.value_rhs_2
 
 #general initialization
 ts = time.time()
@@ -111,15 +125,13 @@ state_rhs_1 = tf.placeholder(tf.float32, [batch_size, num_product, dim_state_spa
 state_rhs_2 = tf.placeholder(tf.float32, [batch_size, dim_state_space])
 mask = tf.placeholder(tf.float32, [batch_size, num_product])
 
-#define linear approximation parameters
-weights = tf.Variable(np.random.uniform(size=[dim_state_space]), dtype=tf.float32)
-bias = tf.Variable(np.random.uniform(size=1), dtype=tf.float32)
-
-bellman_error, value_lhs, value_rhs_1, value_rhs_2 = generate_bellman_error() 
+#define linear approximation model
+model = error_model_linear()
+bellman_error, value_lhs, value_rhs_1, value_rhs_2 = model.generate_bellman_error() 
 #training loss
-loss = bellman_error + generate_boundary_error(state_lhs, weights, bias)
+loss = bellman_error + model.generate_boundary_error(state_lhs)
 
-train_step = tf.train.AdagradOptimizer(0.3).minimize(loss)    
+train_step = tf.train.AdagradOptimizer(0.3).minimize(loss)
 
 num_batches = 1000
 with tf.Session() as sess:    
@@ -158,15 +170,15 @@ with tf.Session() as sess:
                              })
         # this is simply forward calculation        
         if 1 and batch % 100 == 0:    
-            result_loss, result_weights, result_bias, result_lhs, result_rhs_1, result_rhs_2 = sess.run(
-                [loss, weights, bias, value_lhs, value_rhs_1, value_rhs_2]
+            result_loss, result_lhs, result_rhs_1, result_rhs_2 = sess.run(
+                [loss, value_lhs, value_rhs_1, value_rhs_2]
                 , feed_dict={state_lhs: data_lhs,
                              state_rhs_1: data_rhs_1,
                              state_rhs_2: data_rhs_2,
                              mask: data_mask
                              })    
             print("batch = ", batch, " loss = %.2f"%result_loss)
-            print("weights = ", result_weights, " bias = ", result_bias)
+            #print("weights = ", result_weights, " bias = ", result_bias)
 
 print("total program time = %.2f seconds" % (time.time()-ts))
 
