@@ -44,7 +44,7 @@ product_prob = np.divide(product_demand,num_steps)
 product_prob[0] = 1.0 - np.sum(product_prob)
 
 #define a state (in batch) and a linear value function
-batch_size = 100
+batch_size = 5
 
 #LHS is the value function for current state at time t
 #for each state, we need num_nights real value inputs for available
@@ -99,18 +99,13 @@ loss = tf.reduce_mean(tf.multiply(bellman_error,bellman_error))
 
 train_step = tf.train.AdagradOptimizer(0.3).minimize(loss)    
 
-#gw = tf.gradients(loss, weights)
-#gb = tf.gradients(loss, bias)
-
-num_batches = 1
+num_batches = 100
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())
     for batch in range(num_batches):
         #generate data for LHS
-        #state_lhs = tf.placeholder(tf.float32, [batch_size, dim_state_space])
         data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
-        time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])
-        
+        time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])        
         data_rhs_2 = np.hstack([data_lhs_0, time_lhs-1])
         data_lhs = np.hstack([data_lhs_0, time_lhs])
         
@@ -129,14 +124,29 @@ with tf.Session() as sess:
         time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))
         data_rhs_1 = np.concatenate([data_rhs_1, time_rhs], axis=2)  
         
-        result, result_weights, result_bias, _ = sess.run([loss, weights, bias, train_step]
+        #we will have to run the session twice since there is no way
+        # to ensure it is executed in a pre-determined order per
+        # https://github.com/tensorflow/tensorflow/issues/13133
+        # this is the training step
+        sess.run(train_step
                 , feed_dict={state_lhs: data_lhs,
                              state_rhs_1: data_rhs_1,
                              state_rhs_2: data_rhs_2,
                              mask: data_mask
                              })
+        # this is simply forward calculation
+        result_loss, result_weights, result_bias, result_lhs, result_rhs = sess.run(
+                [loss, weights, bias, value_lhs, value_rhs]
+                , feed_dict={state_lhs: data_lhs,
+                             state_rhs_1: data_rhs_1,
+                             state_rhs_2: data_rhs_2,
+                             mask: data_mask
+                             })    
         if batch % 100 == 0:    
-            print("batch = ", batch, " result = %.2f"%result)
-            print("weights = ", result_weights, " bias = ", result_bias)
+            print("batch = ", batch, " loss = %.2f"%result_loss)
+            #print("weights = ", result_weights, " bias = ", result_bias)
 
 print("total program time = %.2f seconds" % (time.time()-ts))
+
+#in debug model, build np version of lhs and rhs
+np_lhs = np.sum(np.multiply(data_lhs, result_weights),axis=1) + result_bias
