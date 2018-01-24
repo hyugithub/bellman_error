@@ -15,21 +15,21 @@ class error_model_linear:
         self.value_lhs = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_1 = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_2 = tf.constant(0.0, dtype=tf.float32)
+        self.lambda_s0 = 1.0
+        self.lambda_t0 = 1.0
         
     #we also need to define boundary conditions for V(s,0) = 0
     def generate_boundary_error(self,s):
         weights_t0 = tf.multiply(self.weights, tf.constant(np.concatenate([np.ones(num_nights), np.zeros(1)]), dtype=tf.float32))
         v_t0 = tf.reduce_sum(tf.multiply(state_lhs, weights_t0), axis=1) + self.bias
-        
-        lambda_t0 = 1.0
-        boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(lambda_t0, dtype=tf.float32))
+                
+        boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(self.lambda_t0, dtype=tf.float32))
         
         #V(0,t) = 0
         weights_s0 = tf.multiply(self.weights, tf.constant(np.concatenate([np.zeros(num_nights), np.ones(1)]), dtype=tf.float32))
         v_s0 = tf.reduce_sum(tf.multiply(state_lhs, weights_s0), axis=1) + self.bias
-        
-        lambda_s0 = 1.0
-        boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(lambda_s0, dtype=tf.float32))
+                
+        boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(self.lambda_s0, dtype=tf.float32))
         self.boundary_error = boundary_t0 + boundary_s0
         return self.boundary_error
 
@@ -154,6 +154,7 @@ with tf.Session() as sess:
         data_rhs_1 = np.swapaxes(data_rhs_1, 1,2,) - resource_consumed
         data_mask = (1-np.any(data_rhs_1<0, axis=2)).astype(int)        
         data_rhs_1 = np.maximum(data_rhs_1, 0)
+        #t-1
         time_rhs = time_lhs-1
         time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))
         data_rhs_1 = np.concatenate([data_rhs_1, time_rhs], axis=2)  
