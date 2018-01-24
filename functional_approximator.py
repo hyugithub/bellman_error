@@ -15,6 +15,8 @@ class error_model_linear:
         self.value_lhs = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_1 = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_2 = tf.constant(0.0, dtype=tf.float32)
+        
+        #TODO: tune thse two parameters
         self.lambda_s0 = 1.0
         self.lambda_t0 = 1.0
         
@@ -68,7 +70,7 @@ class error_model_linear:
         self.value_lhs = value_lhs 
         self.value_rhs_1 = value_rhs_1
         self.value_rhs_2 = value_rhs_2
-        return self.bellman_error, self.value_lhs, self.value_rhs_1, self.value_rhs_2
+        return self.bellman_error, self.value_lhs, self.value_rhs_1, self.value_rhs_2, self.weights, self.bias
 
 #general initialization
 ts = time.time()
@@ -127,7 +129,7 @@ mask = tf.placeholder(tf.float32, [batch_size, num_product])
 
 #define linear approximation model
 model = error_model_linear()
-bellman_error, value_lhs, value_rhs_1, value_rhs_2 = model.generate_bellman_error() 
+bellman_error, value_lhs, value_rhs_1, value_rhs_2, weights, bias = model.generate_bellman_error() 
 #training loss
 loss = bellman_error + model.generate_boundary_error(state_lhs)
 
@@ -139,9 +141,8 @@ with tf.Session() as sess:
     for batch in range(num_batches):
         #generate data for LHS
         data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
-        time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])        
-        data_rhs_2 = np.hstack([data_lhs_0, time_lhs-1])
-        data_lhs = np.hstack([data_lhs_0, time_lhs])
+        time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                
+        
         
         #derive RHS
         # after consuming every product, what's the RHS
@@ -156,8 +157,16 @@ with tf.Session() as sess:
         data_rhs_1 = np.maximum(data_rhs_1, 0)
         #t-1
         time_rhs = time_lhs-1
-        time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))
-        data_rhs_1 = np.concatenate([data_rhs_1, time_rhs], axis=2)  
+        time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))        
+        
+        #scaling and stacking
+        data_lhs = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs, num_steps)])
+        data_rhs_1 = np.concatenate([np.divide(data_rhs_1, capacity), np.divide(time_rhs, num_steps)], axis=2)  
+        data_rhs_2 = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs-1, num_steps)])
+        
+#        data_lhs = np.hstack([np.divide(data_lhs_0, 1), np.divide(time_lhs, 1)])
+#        data_rhs_1 = np.concatenate([np.divide(data_rhs_1, 1), np.divide(time_rhs, 1)], axis=2)  
+#        data_rhs_2 = np.hstack([np.divide(data_lhs_0, 1), np.divide(time_lhs-1, 1)])        
         
         #we will have to run the session twice since there is no way
         # to ensure it is executed in a pre-determined order per
@@ -171,15 +180,15 @@ with tf.Session() as sess:
                              })
         # this is simply forward calculation        
         if 1 and batch % 100 == 0:    
-            result_loss, result_lhs, result_rhs_1, result_rhs_2 = sess.run(
-                [loss, value_lhs, value_rhs_1, value_rhs_2]
+            result_loss, result_lhs, result_rhs_1, result_rhs_2, result_weights, result_bias = sess.run(
+                [loss, value_lhs, value_rhs_1, value_rhs_2, weights, bias]
                 , feed_dict={state_lhs: data_lhs,
                              state_rhs_1: data_rhs_1,
                              state_rhs_2: data_rhs_2,
                              mask: data_mask
                              })    
-            print("batch = ", batch, " loss = %.2f"%result_loss)
-            #print("weights = ", result_weights, " bias = ", result_bias)
+            print("batch = ", batch, " loss = %.5f"%result_loss)
+            print("weights = ", result_weights, " bias = ", result_bias)
 
 print("total program time = %.2f seconds" % (time.time()-ts))
 
