@@ -6,15 +6,31 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 import time
 
-ts = time.time()
+#we also need to define boundary conditions for V(s,0) = 0
+def generate_boundary_error(s, weights, bias):
+    weights_t0 = tf.multiply(weights, tf.constant(np.concatenate([np.ones(num_nights), np.zeros(1)]), dtype=tf.float32))
+    v_t0 = tf.reduce_sum(tf.multiply(state_lhs, weights_t0), axis=1) + bias
+    
+    lambda_t0 = 1.0
+    boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(lambda_t0, dtype=tf.float32))
+    
+    #V(0,t) = 0
+    weights_s0 = tf.multiply(weights, tf.constant(np.concatenate([np.zeros(num_nights), np.ones(1)]), dtype=tf.float32))
+    v_s0 = tf.reduce_sum(tf.multiply(state_lhs, weights_s0), axis=1) + bias
+    
+    lambda_s0 = 1.0
+    boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(lambda_s0, dtype=tf.float32))
+    return boundary_t0 + boundary_s0
 
+#general initialization
+ts = time.time()
 ops.reset_default_graph()
 np.set_printoptions(precision=4)
 np.random.seed(4321)
 
-num_nights = 3
-capacity = 10
-
+#business parameter initialization
+num_nights = 14
+capacity = 100
 # product zero is the no-revenue no resource product
 # added for simplicity
 product_null = 0
@@ -43,14 +59,14 @@ num_steps = int(np.sum(product_demand)/0.01)
 product_prob = np.divide(product_demand,num_steps)
 product_prob[0] = 1.0 - np.sum(product_prob)
 
-#define a state (in batch) and a linear value function
-batch_size = 5
+#computational graph generation
 
+#define a state (in batch) and a linear value function
+batch_size = 64
 #LHS is the value function for current state at time t
 #for each state, we need num_nights real value inputs for available
 # inventory, and +1 for time
 dim_state_space = num_nights+1
-
 #tensorflow model inputs (or really state space samples)
 #V(s,t)
 state_lhs = tf.placeholder(tf.float32, [batch_size, dim_state_space])
@@ -97,27 +113,14 @@ value_rhs = value_rhs_1 + value_rhs_2
 bellman_error = value_lhs-value_rhs
 bellman_error = tf.multiply(bellman_error,bellman_error)
 
-#we also need to define boundary conditions
-#V(s,0) = 0
-weights_t0 = tf.multiply(weights, tf.constant(np.concatenate([np.ones(num_nights), np.zeros(1)]), dtype=tf.float32))
-v_t0 = tf.reduce_sum(tf.multiply(state_lhs, weights_t0), axis=1) + bias
-
-lambda_t0 = 1.0
-boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(lambda_t0, dtype=tf.float32))
-
-#V(0,t) = 0
-weights_s0 = tf.multiply(weights, tf.constant(np.concatenate([np.zeros(num_nights), np.ones(1)]), dtype=tf.float32))
-v_s0 = tf.reduce_sum(tf.multiply(state_lhs, weights_s0), axis=1) + bias
-
-lambda_s0 = 1.0
-boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(lambda_s0, dtype=tf.float32))
+boundary_error = generate_boundary_error(state_lhs, weights, bias)
 
 #training loss
-loss = tf.reduce_mean(bellman_error) + boundary_t0 + boundary_s0
+loss = tf.reduce_mean(bellman_error) + boundary_error
 
 train_step = tf.train.AdagradOptimizer(0.3).minimize(loss)    
 
-num_batches = 10000
+num_batches = 1000
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())
     for batch in range(num_batches):
@@ -153,7 +156,7 @@ with tf.Session() as sess:
                              mask: data_mask
                              })
         # this is simply forward calculation        
-        if 1 and batch % 500 == 0:    
+        if 1 and batch % 100 == 0:    
             result_loss, result_weights, result_bias, result_lhs, result_rhs_1, result_rhs_2 = sess.run(
                 [loss, weights, bias, value_lhs, value_rhs_1, value_rhs_2]
                 , feed_dict={state_lhs: data_lhs,
