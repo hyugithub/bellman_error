@@ -1,4 +1,4 @@
-#the purpose of this file is to generate a simple functional 
+#the purpose of this file is to generate a simple functional
 # approximator to V(s,t)
 
 import numpy as np
@@ -31,7 +31,7 @@ for i in range(0,num_nights):
     product_resource_map[i+num_nights][i] = 1.0
 #product_resource_map[num_product-1][num_nights-1] = 1.0
 
-product_revenue = np.random.uniform(size=[num_product])
+product_revenue = 10*np.random.uniform(size=[num_product])
 product_revenue[product_null] = 0
 #total demand
 product_demand = np.random.uniform(size=[num_product])*capacity
@@ -95,11 +95,29 @@ value_rhs_1 = tf.reduce_sum(value_rhs_1, axis=1)
 value_rhs = value_rhs_1 + value_rhs_2
 
 bellman_error = value_lhs-value_rhs
-loss = tf.reduce_mean(tf.multiply(bellman_error,bellman_error))
+bellman_error = tf.multiply(bellman_error,bellman_error)
+
+#we also need to define boundary conditions
+#V(s,0) = 0
+weights_t0 = tf.multiply(weights, tf.constant(np.concatenate([np.ones(num_nights), np.zeros(1)]), dtype=tf.float32))
+v_t0 = tf.reduce_sum(tf.multiply(state_lhs, weights_t0), axis=1) + bias
+
+lambda_t0 = 1.0
+boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(lambda_t0, dtype=tf.float32))
+
+#V(0,t) = 0
+weights_s0 = tf.multiply(weights, tf.constant(np.concatenate([np.zeros(num_nights), np.ones(1)]), dtype=tf.float32))
+v_s0 = tf.reduce_sum(tf.multiply(state_lhs, weights_s0), axis=1) + bias
+
+lambda_s0 = 1.0
+boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(lambda_s0, dtype=tf.float32))
+
+#training loss
+loss = tf.reduce_mean(bellman_error) + boundary_t0 + boundary_s0
 
 train_step = tf.train.AdagradOptimizer(0.3).minimize(loss)    
 
-num_batches = 100
+num_batches = 10000
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())
     for batch in range(num_batches):
@@ -134,19 +152,27 @@ with tf.Session() as sess:
                              state_rhs_2: data_rhs_2,
                              mask: data_mask
                              })
-        # this is simply forward calculation
-        result_loss, result_weights, result_bias, result_lhs, result_rhs = sess.run(
-                [loss, weights, bias, value_lhs, value_rhs]
+        # this is simply forward calculation        
+        if 1 and batch % 500 == 0:    
+            result_loss, result_weights, result_bias, result_lhs, result_rhs_1, result_rhs_2 = sess.run(
+                [loss, weights, bias, value_lhs, value_rhs_1, value_rhs_2]
                 , feed_dict={state_lhs: data_lhs,
                              state_rhs_1: data_rhs_1,
                              state_rhs_2: data_rhs_2,
                              mask: data_mask
                              })    
-        if batch % 100 == 0:    
             print("batch = ", batch, " loss = %.2f"%result_loss)
-            #print("weights = ", result_weights, " bias = ", result_bias)
+            print("weights = ", result_weights, " bias = ", result_bias)
 
 print("total program time = %.2f seconds" % (time.time()-ts))
 
 #in debug model, build np version of lhs and rhs
-np_lhs = np.sum(np.multiply(data_lhs, result_weights),axis=1) + result_bias
+#np_lhs = np.sum(np.multiply(data_lhs, result_weights),axis=1) + result_bias
+#np_rhs_2 = np.sum(np.multiply(data_rhs_2, result_weights),axis=1) + result_bias
+#
+#np_rhs_1 = np.sum(np.multiply(data_rhs_1, result_weights), axis=2) + result_bias
+#np_rhs_1 = np_rhs_1 - np.reshape(np_rhs_2, [batch_size,-1]) + np.asarray(product_revenue)
+#np_rhs_1 = np.maximum(np_rhs_1, 0.0)
+#np_rhs_1 = np.multiply(np_rhs_1, data_mask)
+#np_rhs_1 = np.multiply(np_rhs_1, product_prob)
+#np_rhs_1 = np.sum(np_rhs_1, axis=1)
