@@ -5,6 +5,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
 import time
+#from error_model import error_model_linear, error_model_simple_nn
 
 class error_model_linear:
     def __init__(self):
@@ -32,7 +33,7 @@ class error_model_linear:
         v_s0 = tf.reduce_sum(tf.multiply(state_lhs, weights_s0), axis=1) + self.bias
                 
         boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(self.lambda_s0, dtype=tf.float32))
-        self.boundary_error = boundary_t0 + boundary_s0
+        self.boundary_error = boundary_t0 + boundary_s0        
         return self.boundary_error
 
     def generate_bellman_error(self):
@@ -76,7 +77,7 @@ class error_model_linear:
 
 class error_model_simple_nn:
     def __init__(self):
-        self.hidden = 17
+        self.hidden = 64
         self.output = 1
         self.boundary_error = tf.constant(0.0, dtype=tf.float32)
         self.bellman_error = tf.constant(0.0, dtype=tf.float32)
@@ -96,42 +97,47 @@ class error_model_simple_nn:
         #output layer: it's unclear what output layer makes sense for
         #a continuous output at this point. we assume it is linear
         value_lhs = tf.matmul(hidden_lhs, self.w2) + self.b2
+        #print(value_lhs)
         
         #V(s,t-1)
         hidden_rhs_2 = tf.nn.sigmoid(tf.matmul(state_rhs_2, self.w1) + self.b1)
         value_rhs_2 = tf.matmul(hidden_rhs_2, self.w2) + self.b2
+        #print(value_rhs_2 )
         
         #V(s-a(p),t-1)
-        hidden_rhs_1 = tf.tensordot(state_rhs_1, self.w1, axes=[[2],[0]]) + self.b1
-        value_rhs_1 = tf.reshape(tf.tensordot(hidden_rhs_1, self.w2, axes=[[2],[0]]) + self.b2, [batch_size,-1])
+        hidden_rhs_1 = tf.nn.sigmoid(tf.tensordot(state_rhs_1, self.w1, axes=[[2],[0]]) + self.b1)        
+        value_rhs_1 = tf.reshape(tf.tensordot(hidden_rhs_1, self.w2, axes=[[2],[0]]) + self.b2, [batch_size,-1])        
         
         value_rhs_1 = value_rhs_1 - tf.reshape(value_rhs_2, [batch_size,-1]) + tf.constant(product_revenue, dtype=tf.float32)
         value_rhs_1 = tf.maximum(value_rhs_1, tf.constant(0.0))
         value_rhs_1 = tf.multiply(value_rhs_1, mask)
         value_rhs_1 = tf.multiply(value_rhs_1
                                 , tf.constant(product_prob
-                                              , dtype=tf.float32))
-        value_rhs_1 = tf.reduce_sum(value_rhs_1, axis=1)
-        value_rhs = tf.reshape(value_rhs_1, [batch_size,-1]) + value_rhs_2        
+                                              , dtype=tf.float32))        
+        value_rhs_1 = tf.reshape(tf.reduce_sum(value_rhs_1, axis=1), [batch_size,-1])        
+        value_rhs = value_rhs_1 + value_rhs_2        
+        #print(value_rhs)
         
         bellman_error = value_lhs-value_rhs
+        #print(bellman_error)
         self.bellman_error = tf.reduce_mean(tf.multiply(bellman_error,bellman_error))
         self.value_lhs = value_lhs 
         self.value_rhs_1 = value_rhs_1
         self.value_rhs_2 = value_rhs_2
-        return self.bellman_error, self.value_lhs, self.value_rhs_1, self.value_rhs_2, self.w1, self.b1        
+        #print(self.bellman_error)
+        return self.bellman_error
     
     def generate_boundary_error(self,s): 
+        #V(s,0) = 0
         mask_t0 = tf.reshape(tf.constant(np.concatenate([np.ones(num_nights), np.zeros(1)]), dtype=tf.float32), [dim_state_space, -1])
         weights_t0 = tf.multiply(self.w1, mask_t0) 
         hidden_lhs = tf.nn.sigmoid(tf.matmul(s, weights_t0) + self.b1)
         #output layer: it's unclear what output layer makes sense for
         #a continuous output at this point. we assume it is linear
-        v_t0 = tf.matmul(hidden_lhs, self.w2) + self.b2        
-                
+        v_t0 = tf.matmul(hidden_lhs, self.w2) + self.b2                        
+        print(v_t0)
         boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(self.lambda_t0, dtype=tf.float32))
         
-        #V(0,t) = 0
         mask_s0 = tf.reshape(tf.constant(np.concatenate([np.zeros(num_nights), np.ones(1)]), dtype=tf.float32), [dim_state_space, -1])
         weights_s0 = tf.multiply(self.w1, mask_s0)
         hidden_lhs = tf.nn.sigmoid(tf.matmul(s, weights_s0) + self.b1)
@@ -140,7 +146,35 @@ class error_model_simple_nn:
         boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(self.lambda_s0, dtype=tf.float32))
         self.boundary_error = boundary_t0 + boundary_s0
         return self.boundary_error
+    
+    def loss(self, s):
+        self.loss = self.generate_bellman_error() + self.generate_boundary_error(s)
+        return self.loss
 
+    def read_loss(self, session, data_input):
+        data_lhs,data_rhs_1,data_rhs_2,data_mask = data_input
+        result_loss = session.run(
+                self.loss
+                , feed_dict={state_lhs: data_lhs,
+                             state_rhs_1: data_rhs_1,
+                             state_rhs_2: data_rhs_2,
+                             mask: data_mask
+                             })            
+        print("loss = %.6f"%result_loss)
+        
+    def read_param(self, session, data_input):
+        #read we have set up the network and it is running
+        #all we need to do is to refer to objects we created
+        # and are interested
+        data_lhs,data_rhs_1,data_rhs_2,data_mask = data_input
+        result_lhs, result_rhs_1, result_rhs_2, result_weights, result_bias = session.run(
+                [self.value_lhs, self.value_rhs_1, self.value_rhs_2, self.w1, self.b1]
+                , feed_dict={state_lhs: data_lhs,
+                             state_rhs_1: data_rhs_1,
+                             state_rhs_2: data_rhs_2,
+                             mask: data_mask
+                             })            
+        print("weights = ", result_weights, " \nbias = ", result_bias)
 #general initialization
 ts = time.time()
 ops.reset_default_graph()
@@ -203,11 +237,9 @@ mask = tf.placeholder(tf.float32, [batch_size, num_product])
 #define linear approximation model
 #model = error_model_linear()
 model = error_model_simple_nn()
-bellman_error, value_lhs, value_rhs_1, value_rhs_2, weights, bias = model.generate_bellman_error() 
-#training loss
-loss = bellman_error + model.generate_boundary_error(state_lhs)
+#loss = model.generate_bellman_error() + model.generate_boundary_error(state_lhs)
 
-train_step = tf.train.AdagradOptimizer(0.3).minimize(loss)
+train_step = tf.train.AdagradOptimizer(0.3).minimize(model.loss(state_lhs))
 
 num_batches = 1000
 with tf.Session() as sess:    
@@ -253,15 +285,16 @@ with tf.Session() as sess:
                              mask: data_mask
                              })
         # this is simply forward calculation        
-        if 1 and batch % 100 == 0:    
-            result_loss, result_lhs, result_rhs_1, result_rhs_2, result_weights, result_bias = sess.run(
-                [loss, value_lhs, value_rhs_1, value_rhs_2, weights, bias]
-                , feed_dict={state_lhs: data_lhs,
-                             state_rhs_1: data_rhs_1,
-                             state_rhs_2: data_rhs_2,
-                             mask: data_mask
-                             })    
-            print("batch = ", batch, " loss = %.5f"%result_loss)
+        if 1 and batch % 100 == 0:              
+            model.read_loss(sess, (data_lhs, data_rhs_1, data_rhs_2, data_mask))
+#            result_loss, result_lhs, result_rhs_1, result_rhs_2, result_weights, result_bias = sess.run(
+#                [loss, value_lhs, value_rhs_1, value_rhs_2, weights, bias]
+#                , feed_dict={state_lhs: data_lhs,
+#                             state_rhs_1: data_rhs_1,
+#                             state_rhs_2: data_rhs_2,
+#                             mask: data_mask
+#                             })    
+#            print("batch = ", batch, " loss = %.5f"%result_loss)
             #print("weights = ", result_weights, " bias = ", result_bias)
 
 print("total program time = %.2f seconds" % (time.time()-ts))
