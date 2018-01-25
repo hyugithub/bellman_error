@@ -34,7 +34,7 @@ class error_model_simple_nn:
         # 0 -- sigmoid
         # default: linear
         self.flag = [0]*(num_hidden_layer+1)
-        #self.flag[-1] = 1
+        self.flag[-1] = 1
         
         #with hidden units we can initialize size
         hidden_units = [self.hidden] * num_hidden_layer        
@@ -44,7 +44,7 @@ class error_model_simple_nn:
     def build(self):
         self.loss = self.generate_bellman_error_deep() \
                         + self.generate_boundary_error_deep()
-        self.train_step =tf.train.AdagradOptimizer(0.3).minimize(self.loss)
+        self.train_step =tf.train.AdagradOptimizer(0.1).minimize(self.loss)
 
     # given a sequence of weights and biases, build network
     # use flag to control layer
