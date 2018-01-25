@@ -28,10 +28,14 @@ class error_model_simple_nn:
         self.weight_output = tf.Variable(np.random.uniform(size=[self.hidden,1]), dtype=tf.float32)
         self.bias_output = tf.Variable(np.random.uniform(size=[1,1]), dtype=tf.float32)
         self.lambda_s0 = 1e-3
-        self.lambda_t0 = 1e-3
+        self.lambda_t0 = 1e-3        
         
         num_hidden_layer = 5
         hidden_units = [64] * num_hidden_layer
+        
+        flag = [0]*(num_hidden_layer+1)
+        #flag[-1] = 1
+        self.flag = flag        
         
         #with hidden units we can initialize size
         self.weight_hidden = [tf.Variable(np.random.uniform(size=[din,dout]), dtype=tf.float32) for din,dout in zip(hidden_units, hidden_units[1:])]
@@ -43,8 +47,13 @@ class error_model_simple_nn:
         
     def build_network(self, state_input, weights, biases):
         state = state_input
-        for w,b in zip(weights, biases):
-            state = tf.nn.sigmoid(tf.matmul(state, w) + b)
+        for w,b,m in zip(weights, biases, self.flag):
+            if m == 0:
+                # sigmoid = 0
+                state = tf.nn.sigmoid(tf.matmul(state, w) + b)
+            else:
+                # linear = 1, default
+                state = tf.matmul(state, w) + b
         return state
 
     def generate_bellman_error_deep(self):
@@ -60,7 +69,10 @@ class error_model_simple_nn:
         
         weights = [self.weight_input] + self.weight_hidden + [self.weight_output]
         biases = [self.bias_input] + self.bias_hidden + [self.bias_output]
-        #V(s,t)
+        #linear in output
+        flag = [0]*len(weights)
+        flag[-1] = 1
+        #V(s,t)        
         V_s_t = self.build_network(self.state_lhs, weights, biases)
         #V(s,t-1)
         V_s_tm1 = self.build_network(self.state_rhs_2, weights, biases)
@@ -259,7 +271,7 @@ dim_state_space = num_nights+1
 #model = error_model_linear()
 model = error_model_simple_nn()
 
-num_batches = 5000
+num_batches = 1000
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())
     for batch in range(num_batches):
