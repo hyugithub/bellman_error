@@ -31,7 +31,6 @@ class error_model_simple_nn:
         self.lambda_t0 = 1e-3
         
         num_hidden_layer = 5
-        hidden = 64
         hidden_units = [64] * num_hidden_layer
         
         #with hidden units we can initialize size
@@ -42,7 +41,7 @@ class error_model_simple_nn:
                         + self.generate_boundary_error_deep()
         self.train_step =tf.train.AdagradOptimizer(0.3).minimize(self.loss)
         
-    def layer(self, state_input, weights, biases):
+    def build_network(self, state_input, weights, biases):
         state = state_input
         for w,b in zip(weights, biases):
             state = tf.nn.sigmoid(tf.matmul(state, w) + b)
@@ -62,11 +61,11 @@ class error_model_simple_nn:
         weights = [self.weight_input] + self.weight_hidden + [self.weight_output]
         biases = [self.bias_input] + self.bias_hidden + [self.bias_output]
         #V(s,t)
-        V_s_t = self.layer(self.state_lhs, weights, biases)
+        V_s_t = self.build_network(self.state_lhs, weights, biases)
         #V(s,t-1)
-        V_s_tm1 = self.layer(self.state_rhs_2, weights, biases)
+        V_s_tm1 = self.build_network(self.state_rhs_2, weights, biases)
         #V(s-a(p),t-1)
-        V_s1_tm1 = self.layer(tf.reshape(self.state_rhs_1,[-1, dim_state_space]), weights, biases)
+        V_s1_tm1 = self.build_network(tf.reshape(self.state_rhs_1,[-1, dim_state_space]), weights, biases)
         V_s1_tm1 = tf.reshape(V_s1_tm1, [batch_size,-1])             
         
         value_lhs = V_s_t
@@ -96,10 +95,10 @@ class error_model_simple_nn:
         #print(self.bellman_error)
         return self.bellman_error        
         
-    def generate_bellman_error(self):
+    def generate_bellman_error_shallow(self):
         #V(s,t)
         hidden_lhs = tf.nn.sigmoid(tf.matmul(self.state_lhs, self.weight_input) + self.bias_input)
-        #output self.layer: it's unclear what output self.layer makes sense for
+        #output self.build_network: it's unclear what output self.build_network makes sense for
         #a continuous output at this point. we assume it is linear
         value_lhs = tf.matmul(hidden_lhs, self.weight_output) + self.bias_output
         #print(value_lhs)
@@ -140,24 +139,24 @@ class error_model_simple_nn:
         weights = [weights_t0] + self.weight_hidden + [self.weight_output]
         biases = [self.bias_input] + self.bias_hidden + [self.bias_output]                
         #V(s,t=0)
-        v_t0 = self.layer(self.state_lhs, weights, biases)
+        v_t0 = self.build_network(self.state_lhs, weights, biases)
         boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(self.lambda_t0, dtype=tf.float32))
         
         mask_s0 = tf.reshape(tf.constant(np.concatenate([np.zeros(num_nights), np.ones(1)]), dtype=tf.float32), [dim_state_space, -1])
         weights_s0 = tf.multiply(self.weight_input, mask_s0)
         weights = [weights_s0] + self.weight_hidden + [self.weight_output]        
         #V(s=0,t)
-        v_s0 = self.layer(self.state_lhs, weights, biases)                
+        v_s0 = self.build_network(self.state_lhs, weights, biases)                
         boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(self.lambda_s0, dtype=tf.float32))
         self.boundary_error = boundary_t0 + boundary_s0
         return self.boundary_error   
     
-    def generate_boundary_error(self): 
+    def generate_boundary_error_shallow(self): 
         #V(s,0) = 0
         mask_t0 = tf.reshape(tf.constant(np.concatenate([np.ones(num_nights), np.zeros(1)]), dtype=tf.float32), [dim_state_space, -1])
         weights_t0 = tf.multiply(self.weight_input, mask_t0) 
         hidden_lhs = tf.nn.sigmoid(tf.matmul(self.state_lhs, weights_t0) + self.bias_input)
-        #output self.layer: it's unclear what output self.layer makes sense for
+        #output self.build_network: it's unclear what output self.build_network makes sense for
         #a continuous output at this point. we assume it is linear
         v_t0 = tf.matmul(hidden_lhs, self.weight_output) + self.bias_output                        
         print(v_t0)
@@ -260,7 +259,7 @@ dim_state_space = num_nights+1
 #model = error_model_linear()
 model = error_model_simple_nn()
 
-num_batches = 500
+num_batches = 5000
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())
     for batch in range(num_batches):
