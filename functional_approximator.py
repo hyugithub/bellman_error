@@ -151,8 +151,15 @@ class error_model_simple_nn:
         self.loss = self.generate_bellman_error() + self.generate_boundary_error(s)
         return self.loss
 
-    def read_loss(self, session, data_input):
-        data_lhs,data_rhs_1,data_rhs_2,data_mask = data_input
+    def train(self, session, data_lhs, data_rhs_1, data_rhs_2, data_mask):
+        session.run(train_step
+                , feed_dict={state_lhs: data_lhs,
+                             state_rhs_1: data_rhs_1,
+                             state_rhs_2: data_rhs_2,
+                             mask: data_mask
+                             })
+        
+    def read_loss(self, session, data_lhs ,data_rhs_1 ,data_rhs_2 ,data_mask):
         result_loss = session.run(
                 self.loss
                 , feed_dict={state_lhs: data_lhs,
@@ -162,11 +169,10 @@ class error_model_simple_nn:
                              })            
         print("loss = %.6f"%result_loss)
         
-    def read_param(self, session, data_input):
+    def read_param(self, session, data_lhs,data_rhs_1,data_rhs_2,data_mask):
         #read we have set up the network and it is running
         #all we need to do is to refer to objects we created
         # and are interested
-        data_lhs,data_rhs_1,data_rhs_2,data_mask = data_input
         result_lhs, result_rhs_1, result_rhs_2, result_weights, result_bias = session.run(
                 [self.value_lhs, self.value_rhs_1, self.value_rhs_2, self.w1, self.b1]
                 , feed_dict={state_lhs: data_lhs,
@@ -241,16 +247,15 @@ model = error_model_simple_nn()
 
 train_step = tf.train.AdagradOptimizer(0.3).minimize(model.loss(state_lhs))
 
-num_batches = 1000
+num_batches = 500
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())
     for batch in range(num_batches):
         #generate data for LHS
         data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
         time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                
-        
-        
-        #derive RHS
+                
+        #generate data for RHS
         # after consuming every product, what's the RHS
         #batch x product x night(state)
         #resource_consumed = np.swapaxes(np.tile(product_resource_map, (batch_size,1,1)), 1,2)
@@ -278,22 +283,11 @@ with tf.Session() as sess:
         # to ensure it is executed in a pre-determined order per
         # https://github.com/tensorflow/tensorflow/issues/13133
         # this is the training step
-        sess.run(train_step
-                , feed_dict={state_lhs: data_lhs,
-                             state_rhs_1: data_rhs_1,
-                             state_rhs_2: data_rhs_2,
-                             mask: data_mask
-                             })
+        model.train(sess,data_lhs,data_rhs_1,data_rhs_2,data_mask)
         # this is simply forward calculation        
         if 1 and batch % 100 == 0:              
-            model.read_loss(sess, (data_lhs, data_rhs_1, data_rhs_2, data_mask))
-#            result_loss, result_lhs, result_rhs_1, result_rhs_2, result_weights, result_bias = sess.run(
-#                [loss, value_lhs, value_rhs_1, value_rhs_2, weights, bias]
-#                , feed_dict={state_lhs: data_lhs,
-#                             state_rhs_1: data_rhs_1,
-#                             state_rhs_2: data_rhs_2,
-#                             mask: data_mask
-#                             })    
+            print("batch = ", batch)
+            model.read_loss(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
 #            print("batch = ", batch, " loss = %.5f"%result_loss)
             #print("weights = ", result_weights, " bias = ", result_bias)
 
