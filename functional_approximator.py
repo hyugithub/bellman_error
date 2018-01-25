@@ -6,8 +6,6 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 import time
 
-
-
 class error_model_simple_nn:
     def __init__(self):
         #inputs
@@ -17,9 +15,9 @@ class error_model_simple_nn:
         #V(s,t-1)
         self.state_rhs_2 = tf.placeholder(tf.float32, [batch_size, dim_state_space])
         self.mask = tf.placeholder(tf.float32, [batch_size, num_product])                
-        
+
+        # size of network        
         self.hidden = 64
-        self.output = 1
         self.value_lhs = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_1 = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_2 = tf.constant(0.0, dtype=tf.float32)
@@ -27,24 +25,29 @@ class error_model_simple_nn:
         self.bias_input = tf.Variable(np.random.uniform(size=[self.hidden]), dtype=tf.float32)
         self.weight_output = tf.Variable(np.random.uniform(size=[self.hidden,1]), dtype=tf.float32)
         self.bias_output = tf.Variable(np.random.uniform(size=[1,1]), dtype=tf.float32)
-        self.lambda_s0 = 1e-3
-        self.lambda_t0 = 1e-3        
+        self.lambda_s0 = 1e-6
+        self.lambda_t0 = 1e-6
         
         num_hidden_layer = 5
-        hidden_units = [64] * num_hidden_layer
-        
-        flag = [0]*(num_hidden_layer+1)
-        #flag[-1] = 1
-        self.flag = flag        
+
+        # determine each layer
+        # 0 -- sigmoid
+        # default: linear
+        self.flag = [0]*(num_hidden_layer+1)
+        #self.flag[-1] = 1
         
         #with hidden units we can initialize size
+        hidden_units = [self.hidden] * num_hidden_layer        
         self.weight_hidden = [tf.Variable(np.random.uniform(size=[din,dout]), dtype=tf.float32) for din,dout in zip(hidden_units, hidden_units[1:])]
         self.bias_hidden = [tf.Variable(np.random.uniform(size=[dout]), dtype=tf.float32) for din,dout in zip(hidden_units, hidden_units[1:])]        
 
+    def build(self):
         self.loss = self.generate_bellman_error_deep() \
                         + self.generate_boundary_error_deep()
         self.train_step =tf.train.AdagradOptimizer(0.3).minimize(self.loss)
-        
+
+    # given a sequence of weights and biases, build network
+    # use flag to control layer
     def build_network(self, state_input, weights, biases):
         state = state_input
         for w,b,m in zip(weights, biases, self.flag):
@@ -56,22 +59,9 @@ class error_model_simple_nn:
                 state = tf.matmul(state, w) + b
         return state
 
-    def generate_bellman_error_deep(self):
-        #temporary inputs, removing later
-#        state_lhs = tf.placeholder(tf.float32, [batch_size, dim_state_space])
-#        state_rhs_1 = tf.placeholder(tf.float32, [batch_size, num_product, dim_state_space])
-#        state_rhs_2 = tf.placeholder(tf.float32, [batch_size, dim_state_space])
-#        mask = tf.placeholder(tf.float32, [batch_size, num_product])
-#        weight_input = tf.Variable(np.random.uniform(size=[dim_state_space, hidden]), dtype=tf.float32)
-#        bias_input = tf.Variable(np.random.uniform(size=[hidden]), dtype=tf.float32)
-#        weight_output = tf.Variable(np.random.uniform(size=[hidden,1]), dtype=tf.float32)
-#        bias_output = tf.Variable(np.random.uniform(size=[1,1]), dtype=tf.float32)                
-        
+    def generate_bellman_error_deep(self):       
         weights = [self.weight_input] + self.weight_hidden + [self.weight_output]
-        biases = [self.bias_input] + self.bias_hidden + [self.bias_output]
-        #linear in output
-        flag = [0]*len(weights)
-        flag[-1] = 1
+        biases = [self.bias_input] + self.bias_hidden + [self.bias_output]        
         #V(s,t)        
         V_s_t = self.build_network(self.state_lhs, weights, biases)
         #V(s,t-1)
@@ -105,43 +95,7 @@ class error_model_simple_nn:
         self.value_rhs_1 = value_rhs_1
         self.value_rhs_2 = value_rhs_2
         #print(self.bellman_error)
-        return self.bellman_error        
-        
-    def generate_bellman_error_shallow(self):
-        #V(s,t)
-        hidden_lhs = tf.nn.sigmoid(tf.matmul(self.state_lhs, self.weight_input) + self.bias_input)
-        #output self.build_network: it's unclear what output self.build_network makes sense for
-        #a continuous output at this point. we assume it is linear
-        value_lhs = tf.matmul(hidden_lhs, self.weight_output) + self.bias_output
-        #print(value_lhs)
-        
-        #V(s,t-1)
-        hidden_rhs_2 = tf.nn.sigmoid(tf.matmul(self.state_rhs_2, self.weight_input) + self.bias_input)
-        value_rhs_2 = tf.matmul(hidden_rhs_2, self.weight_output) + self.bias_output
-        #print(value_rhs_2 )
-        
-        #V(s-a(p),t-1)
-        hidden_rhs_1 = tf.nn.sigmoid(tf.tensordot(self.state_rhs_1, self.weight_input, axes=[[2],[0]]) + self.bias_input)        
-        value_rhs_1 = tf.reshape(tf.tensordot(hidden_rhs_1, self.weight_output, axes=[[2],[0]]) + self.bias_output, [batch_size,-1])        
-        
-        value_rhs_1 = value_rhs_1 - tf.reshape(value_rhs_2, [batch_size,-1]) + tf.constant(product_revenue, dtype=tf.float32)
-        value_rhs_1 = tf.maximum(value_rhs_1, tf.constant(0.0))
-        value_rhs_1 = tf.multiply(value_rhs_1, self.mask)
-        value_rhs_1 = tf.multiply(value_rhs_1
-                                , tf.constant(product_prob
-                                              , dtype=tf.float32))        
-        value_rhs_1 = tf.reshape(tf.reduce_sum(value_rhs_1, axis=1), [batch_size,-1])        
-        value_rhs = value_rhs_1 + value_rhs_2        
-        #print(value_rhs)
-        
-        bellman_error = value_lhs-value_rhs
-        #print(bellman_error)
-        self.bellman_error = tf.reduce_mean(tf.multiply(bellman_error,bellman_error))
-        self.value_lhs = value_lhs 
-        self.value_rhs_1 = value_rhs_1
-        self.value_rhs_2 = value_rhs_2
-        #print(self.bellman_error)
-        return self.bellman_error
+        return self.bellman_error                
     
     def generate_boundary_error_deep(self): 
         #V(s,0) = 0
@@ -161,27 +115,7 @@ class error_model_simple_nn:
         v_s0 = self.build_network(self.state_lhs, weights, biases)                
         boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(self.lambda_s0, dtype=tf.float32))
         self.boundary_error = boundary_t0 + boundary_s0
-        return self.boundary_error   
-    
-    def generate_boundary_error_shallow(self): 
-        #V(s,0) = 0
-        mask_t0 = tf.reshape(tf.constant(np.concatenate([np.ones(num_nights), np.zeros(1)]), dtype=tf.float32), [dim_state_space, -1])
-        weights_t0 = tf.multiply(self.weight_input, mask_t0) 
-        hidden_lhs = tf.nn.sigmoid(tf.matmul(self.state_lhs, weights_t0) + self.bias_input)
-        #output self.build_network: it's unclear what output self.build_network makes sense for
-        #a continuous output at this point. we assume it is linear
-        v_t0 = tf.matmul(hidden_lhs, self.weight_output) + self.bias_output                        
-        print(v_t0)
-        boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(self.lambda_t0, dtype=tf.float32))
-        
-        mask_s0 = tf.reshape(tf.constant(np.concatenate([np.zeros(num_nights), np.ones(1)]), dtype=tf.float32), [dim_state_space, -1])
-        weights_s0 = tf.multiply(self.weight_input, mask_s0)
-        hidden_lhs = tf.nn.sigmoid(tf.matmul(self.state_lhs, weights_s0) + self.bias_input)
-        v_s0 = tf.matmul(hidden_lhs, self.weight_output) + self.bias_output        
-                
-        boundary_s0 = tf.multiply(tf.reduce_mean(tf.multiply(v_s0,v_s0)), tf.constant(self.lambda_s0, dtype=tf.float32))
-        self.boundary_error = boundary_t0 + boundary_s0
-        return self.boundary_error   
+        return self.boundary_error       
 
     def train(self, session, data_lhs, data_rhs_1, data_rhs_2, data_mask):
         session.run(self.train_step
@@ -270,6 +204,7 @@ dim_state_space = num_nights+1
 #define linear approximation model
 #model = error_model_linear()
 model = error_model_simple_nn()
+model.build()
 
 num_batches = 1000
 with tf.Session() as sess:    
