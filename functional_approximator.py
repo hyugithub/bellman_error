@@ -67,7 +67,7 @@ class error_model_simple_nn:
             self.lp_bound_rhs_2 = tf.placeholder(tf.float32, [batch_size])       
 
         # size of network        
-        self.hidden = 64
+        self.hidden = 512
         
         #roughly speaking, we need to initialize 
         self.init_level = 1.0
@@ -368,7 +368,8 @@ elif sys.platform == "linux":
 else:
     model_path = ""
     
-fname_output_model = model_path+"dp.ckpt"
+timestamp = time.strftime('%b-%d-%Y_%H_%M', time.gmtime()).lower()
+fname_output_model = "".join([model_path, "dp.", timestamp, ".ckpt"])
 
 debug_lp = 1
 
@@ -406,7 +407,7 @@ product_prob[0] = 1.0 - np.sum(product_prob)
 #computational graph generation
 
 #define a state (in batch) and a linear value function
-batch_size = 64
+batch_size = 256
 #LHS is the value function for current state at time t
 #for each state, we need num_nights real value inputs for available
 # inventory, and +1 for time
@@ -423,7 +424,7 @@ dim_state_space = num_nights+1
 model = error_model_simple_nn()
 model.build()
 
-num_batches = 15
+num_batches = 20
 
 first_run = True
 
