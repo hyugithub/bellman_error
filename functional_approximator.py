@@ -102,7 +102,7 @@ class error_model_simple_nn:
         self.lambda_s0 = 1.0
         self.lambda_t0 = 1.0
         
-        num_hidden_layer = 2
+        num_hidden_layer = 5
 
         # determine each layer
         # 0 -- sigmoid
