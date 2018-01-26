@@ -59,6 +59,10 @@ class error_model_simple_nn:
         self.state_rhs_2 = tf.placeholder(tf.float32, [batch_size, dim_state_space])
         self.mask = tf.placeholder(tf.float32, [batch_size, num_product])                
         
+        if debug_lp:
+            self.lp_bound_lhs = tf.placeholder(tf.float32, [batch_size])
+            self.lp_bound_rhs_1 = tf.placeholder(tf.float32, [batch_size, num_product])
+            self.lp_bound_rhs_2 = tf.placeholder(tf.float32, [batch_size])       
 
         # size of network        
         self.hidden = 64
@@ -145,11 +149,21 @@ class error_model_simple_nn:
         biases = [self.bias_input] + self.bias_hidden + [self.bias_output]        
         #V(s,t)        
         V_s_t = self.build_network(self.state_lhs, weights, biases)
-        #V(s,t-1)
+        if debug_lp:
+            print(V_s_t, self.lp_bound_lhs)
+            V_s_t = tf.multiply(V_s_t, tf.reshape(self.lp_bound_lhs, [batch_size, -1]))
+        #V(s,t-1) 
         V_s_tm1 = self.build_network(self.state_rhs_2, weights, biases)
+        if debug_lp:
+            V_s_tm1 = tf.multiply(V_s_tm1, tf.reshape(self.lp_bound_rhs_2, [batch_size, -1]))
         #V(s-a(p),t-1)
         V_s1_tm1 = self.build_network(tf.reshape(self.state_rhs_1,[-1, dim_state_space]), weights, biases)
-        V_s1_tm1 = tf.reshape(V_s1_tm1, [batch_size,-1])             
+        V_s1_tm1 = tf.reshape(V_s1_tm1, [batch_size,-1])   
+        if debug_lp:            
+            V_s1_tm1 = tf.multiply(V_s1_tm1, self.lp_bound_rhs_1)
+#            print(V_s_t)
+#            print(V_s_tm1)
+#            print(V_s1_tm1)
         
         value_lhs = V_s_t
         value_rhs_2 = V_s_tm1
@@ -198,36 +212,98 @@ class error_model_simple_nn:
         self.boundary_error = boundary_t0 + boundary_s0
         return self.boundary_error       
 
-    def train(self, session, data_lhs, data_rhs_1, data_rhs_2, data_mask):
-        session.run(self.train_step
-                , feed_dict={self.state_lhs: data_lhs,
-                             self.state_rhs_1: data_rhs_1,
-                             self.state_rhs_2: data_rhs_2,
-                             self.mask: data_mask
-                             })
+    def train(self
+              , session
+              , data_lhs
+              , data_rhs_1
+              , data_rhs_2
+              , data_mask
+              , lp_bound_lhs = None
+              , lp_bound_rhs_1 = None
+              , lp_bound_rhs_2 = None
+              ):
+        if debug_lp:
+            session.run(self.train_step
+                    , feed_dict={self.state_lhs: data_lhs
+                                 , self.state_rhs_1: data_rhs_1
+                                 , self.state_rhs_2: data_rhs_2
+                                 , self.mask: data_mask
+                                 , self.lp_bound_lhs: lp_bound_lhs
+                                 , self.lp_bound_rhs_1: lp_bound_rhs_1
+                                 , self.lp_bound_rhs_2: lp_bound_rhs_2
+                                 })
+        else:
+            session.run(self.train_step
+                    , feed_dict={self.state_lhs: data_lhs
+                                 , self.state_rhs_1: data_rhs_1
+                                 , self.state_rhs_2: data_rhs_2
+                                 , self.mask: data_mask
+                                 })
         
-    def read_loss(self, session, data_lhs ,data_rhs_1 ,data_rhs_2 ,data_mask):
-        result_loss, result_bellman, result_boundary = session.run(
+    def read_loss(self
+                  , session
+                  , data_lhs 
+                  , data_rhs_1 
+                  , data_rhs_2 
+                  , data_mask
+                  , lp_bound_lhs = None
+                  , lp_bound_rhs_1 = None
+                  , lp_bound_rhs_2 = None                  
+                  ):
+        if debug_lp:
+            result_loss, result_bellman, result_boundary = session.run(
                 [self.loss, self.bellman_error, self.boundary_error]
-                , feed_dict={self.state_lhs: data_lhs,
-                             self.state_rhs_1: data_rhs_1,
-                             self.state_rhs_2: data_rhs_2,
-                             self.mask: data_mask
+                , feed_dict={self.state_lhs: data_lhs
+                             , self.state_rhs_1: data_rhs_1
+                             , self.state_rhs_2: data_rhs_2
+                             , self.mask: data_mask
+                             , self.lp_bound_lhs: lp_bound_lhs
+                             , self.lp_bound_rhs_1: lp_bound_rhs_1
+                             , self.lp_bound_rhs_2: lp_bound_rhs_2                             
+                             })            
+        else:
+            result_loss, result_bellman, result_boundary = session.run(
+                [self.loss, self.bellman_error, self.boundary_error]
+                , feed_dict={self.state_lhs: data_lhs
+                             , self.state_rhs_1: data_rhs_1
+                             , self.state_rhs_2: data_rhs_2
+                             , self.mask: data_mask
                              })            
         print("loss = %.6f"%result_loss, "bellman error = %.6f"%result_bellman, "boundary error = %.6f"%result_boundary)
 
-    def read_gradients(self, session, data_lhs,data_rhs_1,data_rhs_2,data_mask):
+    def read_gradients(self
+                       , session
+                       , data_lhs
+                       , data_rhs_1
+                       , data_rhs_2
+                       , data_mask
+                       , lp_bound_lhs = None
+                       , lp_bound_rhs_1 = None
+                       , lp_bound_rhs_2 = None                  
+                      ):
         #read we have set up the network and it is running
         #all we need to do is to refer to objects we created
         # and are interested
         param = tf.trainable_variables()
-        result = session.run(
+        if debug_lp:
+            result = session.run(
                 [self.gradients] + param
-                , feed_dict={self.state_lhs: data_lhs,
-                             self.state_rhs_1: data_rhs_1,
-                             self.state_rhs_2: data_rhs_2,
-                             self.mask: data_mask
+                , feed_dict={self.state_lhs: data_lhs
+                             , self.state_rhs_1: data_rhs_1
+                             , self.state_rhs_2: data_rhs_2
+                             , self.mask: data_mask
+                             , self.lp_bound_lhs: lp_bound_lhs
+                             , self.lp_bound_rhs_1: lp_bound_rhs_1
+                             , self.lp_bound_rhs_2: lp_bound_rhs_2
                              })            
+        else:
+            result = session.run(
+                [self.gradients] + param
+                , feed_dict={self.state_lhs: data_lhs
+                             , self.state_rhs_1: data_rhs_1
+                             , self.state_rhs_2: data_rhs_2
+                             , self.mask: data_mask
+                             })
         gradients = result[0]
         values = result[1:]
         print("check gradients:")    
@@ -239,16 +315,36 @@ class error_model_simple_nn:
                   , "absmean=%.6f"%np.mean(np.absolute(g)))
         print("check gradients end")    
         
-    def read_param(self, session, data_lhs,data_rhs_1,data_rhs_2,data_mask):
+    def read_param(self
+                   , session
+                   , data_lhs
+                   , data_rhs_1
+                   , data_rhs_2
+                   , data_mask
+                   , lp_bound_lhs = None
+                   , lp_bound_rhs_1 = None
+                   , lp_bound_rhs_2 = None
+                  ):
         #read we have set up the network and it is running
         #all we need to do is to refer to objects we created
         # and are interested
-        w_input, b_input, w_output, b_output, w_hidden, b_hidden = session.run(
+        if debug_lp:
+            w_input, b_input, w_output, b_output, w_hidden, b_hidden = session.run(
                 [self.weight_input, self.bias_input, self.weight_output, self.bias_output, self.weight_hidden, self.bias_hidden]
-                , feed_dict={self.state_lhs: data_lhs,
-                             self.state_rhs_1: data_rhs_1,
-                             self.state_rhs_2: data_rhs_2,
-                             self.mask: data_mask
+                , feed_dict={self.state_lhs: data_lhs
+                             , self.state_rhs_1: data_rhs_1
+                             , self.state_rhs_2: data_rhs_2
+                             , self.mask: data_mask
+                             , self.lp_bound_lhs: lp_bound_lhs
+                             , self.lp_bound_rhs_1: lp_bound_rhs_1
+                             , self.lp_bound_rhs_2: lp_bound_rhs_2})            
+        else:
+            w_input, b_input, w_output, b_output, w_hidden, b_hidden = session.run(
+                [self.weight_input, self.bias_input, self.weight_output, self.bias_output, self.weight_hidden, self.bias_hidden]
+                , feed_dict={self.state_lhs: data_lhs
+                             , self.state_rhs_1: data_rhs_1
+                             , self.state_rhs_2: data_rhs_2
+                             , self.mask: data_mask
                              })            
         print("input layer:", "%.4f"%np.mean(w_input), "%.4f"%np.mean(b_input))    
         for w,b in zip(w_hidden,b_hidden):
@@ -316,7 +412,7 @@ dim_state_space = num_nights+1
 model = error_model_simple_nn()
 model.build()
 
-num_batches = 100
+num_batches = 200
 
 first_run = True
 with tf.Session() as sess:    
@@ -326,6 +422,10 @@ with tf.Session() as sess:
         #generate data for LHS V(s,t)
         data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
         time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                                       
+        
+        lp_bound_lhs = np.ones(batch_size)
+        lp_bound_rhs_2 = np.ones(batch_size)
+        lp_bound_rhs_1 = np.ones([batch_size, num_product])
         
         if debug_lp:
             lp_bound_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
@@ -341,13 +441,14 @@ with tf.Session() as sess:
         
         #t-1
         time_rhs = time_lhs-1
-        if debug_lp:
+        if debug_lp:            
             lp_bound_rhs_2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
         time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
 
         if debug_lp:
             lp_bound_rhs_1 = [ lp(data_rhs_1[b][p], time_rhs[b][p]*product_prob) 
                             for b,p in itertools.product(range(batch_size), range(num_product)) ]                
+            lp_bound_rhs_1 = np.reshape(lp_bound_rhs_1, [batch_size,-1])
         
         
         #scaling and stacking
@@ -358,27 +459,68 @@ with tf.Session() as sess:
         if first_run:
             first_run = False
             print("Before even training, check parameters:")
-            model.read_loss(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
-            model.read_param(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
-            model.read_gradients(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
+            model.read_loss(sess
+                    , data_lhs
+                    , data_rhs_1
+                    , data_rhs_2
+                    , data_mask
+                    , lp_bound_lhs
+                    , lp_bound_rhs_1
+                    , lp_bound_rhs_2)
+            model.read_param(sess
+                    , data_lhs
+                    , data_rhs_1
+                    , data_rhs_2
+                    , data_mask
+                    , lp_bound_lhs
+                    , lp_bound_rhs_1
+                    , lp_bound_rhs_2)
+            model.read_gradients(sess
+                    , data_lhs
+                    , data_rhs_1
+                    , data_rhs_2
+                    , data_mask
+                    , lp_bound_lhs
+                    , lp_bound_rhs_1
+                    , lp_bound_rhs_2)                        
             print("Before even training, check parameters end\n")
                 
         #we will have to run the session twice since tensorflow does
         # not ensure all tasks are executed in a pre-determined order per
         # https://github.com/tensorflow/tensorflow/issues/13133
         # this is the training step
-        model.train(sess,data_lhs,data_rhs_1,data_rhs_2,data_mask)
+        model.train(sess
+                    , data_lhs
+                    , data_rhs_1
+                    , data_rhs_2
+                    , data_mask
+                    , lp_bound_lhs
+                    , lp_bound_rhs_1
+                    , lp_bound_rhs_2)
         # statistics accumulation
-        if 1 and batch % 100 == 0:              
+        if 1 and batch % 20 == 0:              
             print("batch = ", batch)
-            model.read_loss(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
-            #model.read_param(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
-            model.read_gradients(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
+            model.read_loss(sess
+                    , data_lhs
+                    , data_rhs_1
+                    , data_rhs_2
+                    , data_mask
+                    , lp_bound_lhs
+                    , lp_bound_rhs_1
+                    , lp_bound_rhs_2)
+            model.read_gradients(sess
+                    , data_lhs
+                    , data_rhs_1
+                    , data_rhs_2
+                    , data_mask
+                    , lp_bound_lhs
+                    , lp_bound_rhs_1
+                    , lp_bound_rhs_2)            
             print("\n")
             
             
 
-print("total program time = %.2f seconds" % (time.time()-ts))
+print("total program time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
 
 #in debug model, build np version of lhs and rhs
 #np_lhs = np.sum(np.multiply(data_lhs, result_weights),axis=1) + result_bias
