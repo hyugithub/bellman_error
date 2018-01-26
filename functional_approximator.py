@@ -118,10 +118,10 @@ class error_model_simple_nn:
                     for din,dout in zip(hidden_units, hidden_units[1:])]
 
     def build(self):
-#        self.loss = self.generate_bellman_error_deep() \
-#                        + self.generate_boundary_error_deep()
         self.loss = self.generate_bellman_error_deep() \
-                        + tf.multiply(tf.constant(0.0, dtype=tf.float32), self.generate_boundary_error_deep())
+                        + self.generate_boundary_error_deep()
+#        self.loss = self.generate_bellman_error_deep() \
+#                        + tf.multiply(tf.constant(0.0, dtype=tf.float32), self.generate_boundary_error_deep())
         self.train_step =tf.train.AdagradOptimizer(0.1).minimize(self.loss)
         self.gradients = tf.gradients(self.loss, tf.trainable_variables())
 
@@ -129,7 +129,7 @@ class error_model_simple_nn:
     # use flag to control layer
     def build_network(self, state_input, weights, biases):
         state = state_input
-        print(len(weights), state.shape)
+        #print(len(weights), state.shape)
         for w,b,m in zip(weights, biases, self.flag):
             if m == 0:
                 # sigmoid = 0
@@ -137,7 +137,7 @@ class error_model_simple_nn:
             else:
                 # linear = 1, default
                 state = tf.matmul(state, w) + b
-            print("print state", state)
+            #print("print state", state)
         return state
 
     def generate_bellman_error_deep(self):       
@@ -232,14 +232,11 @@ class error_model_simple_nn:
         values = result[1:]
         print("check gradients:")    
         for g,p,v in zip(gradients, param, values):
-            print("parameter ", p.name)            
-            print("value = %.4f"%np.mean(v))
-            print("gradient mean="
-                  , np.mean(g)
-                  , " max = "
-                  , np.amax(g)
-                  , " min = "
-                  , np.amin(g))
+            print("parameter "
+                  , p.name           
+                  , "mean value = %.4f"%np.mean(v)
+                  , "gradient mean=%.6f"%np.mean(g)
+                  , "absmean=%.6f"%np.mean(np.absolute(g)))
         print("check gradients end")    
         
     def read_param(self, session, data_lhs,data_rhs_1,data_rhs_2,data_mask):
@@ -266,7 +263,7 @@ ops.reset_default_graph()
 np.set_printoptions(precision=4)
 np.random.seed(4321)
 
-debug_lp = 0
+debug_lp = 1
 
 #business parameter initialization
 num_nights = 14
@@ -302,7 +299,7 @@ product_prob[0] = 1.0 - np.sum(product_prob)
 #computational graph generation
 
 #define a state (in batch) and a linear value function
-batch_size = 16
+batch_size = 64
 #LHS is the value function for current state at time t
 #for each state, we need num_nights real value inputs for available
 # inventory, and +1 for time
@@ -319,7 +316,7 @@ dim_state_space = num_nights+1
 model = error_model_simple_nn()
 model.build()
 
-num_batches = 1000
+num_batches = 100
 
 first_run = True
 with tf.Session() as sess:    
