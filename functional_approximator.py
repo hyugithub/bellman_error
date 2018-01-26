@@ -1,6 +1,7 @@
 #the purpose of this file is to generate a simple functional
 # approximator to V(s,t)
 
+import sys
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
@@ -269,7 +270,7 @@ class error_model_simple_nn:
                              , self.state_rhs_2: data_rhs_2
                              , self.mask: data_mask
                              })            
-        print("loss = %.6f"%result_loss, "bellman error = %.6f"%result_bellman, "boundary error = %.6f"%result_boundary)
+        print("loss = %.3f"%result_loss, "bellman error = %.3f"%result_bellman, "boundary error = %.3f"%result_boundary)
 
     def read_gradients(self
                        , session
@@ -310,9 +311,9 @@ class error_model_simple_nn:
         for g,p,v in zip(gradients, param, values):
             print("parameter "
                   , p.name           
-                  , "mean value = %.4f"%np.mean(v)
-                  , "gradient mean=%.6f"%np.mean(g)
-                  , "absmean=%.6f"%np.mean(np.absolute(g)))
+                  , "mean value = %.3f"%np.mean(v)
+                  , "gradient mean=%.3f"%np.mean(g)
+                  , "absmean=%.3f"%np.mean(np.absolute(g)))
         print("check gradients end")    
         
     def read_param(self
@@ -358,6 +359,15 @@ ts = time.time()
 ops.reset_default_graph()
 np.set_printoptions(precision=4)
 np.random.seed(4321)
+
+if sys.platform == "win32":
+    model_path = "C:/Users/hyu/Desktop/bellman/model/"
+elif sys.platform == "linux":
+    model_path = "/home/ubuntu/model/"
+else:
+    model_path = ""
+    
+fname_output_model = model_path+"dp.ckpt"
 
 debug_lp = 1
 
@@ -412,9 +422,12 @@ dim_state_space = num_nights+1
 model = error_model_simple_nn()
 model.build()
 
-num_batches = 200
+num_batches = 15
 
 first_run = True
+
+saver = tf.train.Saver()
+
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())    
     
@@ -498,7 +511,7 @@ with tf.Session() as sess:
                     , lp_bound_rhs_1
                     , lp_bound_rhs_2)
         # statistics accumulation
-        if 1 and batch % 20 == 0:              
+        if 1 and batch % 10 == 0:              
             print("batch = ", batch)
             model.read_loss(sess
                     , data_lhs
@@ -518,7 +531,7 @@ with tf.Session() as sess:
                     , lp_bound_rhs_2)            
             print("\n")
             
-            
+    save_path = saver.save(sess, fname_output_model) 
 
 print("total program time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
 
