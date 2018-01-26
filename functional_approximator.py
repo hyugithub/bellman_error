@@ -58,32 +58,46 @@ class error_model_simple_nn:
         #V(s,t-1)
         self.state_rhs_2 = tf.placeholder(tf.float32, [batch_size, dim_state_space])
         self.mask = tf.placeholder(tf.float32, [batch_size, num_product])                
+        
 
         # size of network        
         self.hidden = 64
+        
+        #roughly speaking, we need to initialize 
+        self.init_level = 1.0
+        self.init_level_output = 1.0
+        
         self.value_lhs = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_1 = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_2 = tf.constant(0.0, dtype=tf.float32)
-        self.weight_input = tf.Variable(np.random.uniform(size=[dim_state_space, self.hidden])
+        self.weight_input = tf.Variable(self.init_level*np.random.normal(size=[dim_state_space, self.hidden])
                                         , dtype=tf.float32
                                         , name="weight_input"
                                         )
-        self.bias_input = tf.Variable(np.random.uniform(size=[self.hidden])
+        self.bias_input = tf.Variable(self.init_level*np.random.normal(size=[self.hidden])
                                         , dtype=tf.float32
                                         , name="bias_input"
                                         )
-        self.weight_output = tf.Variable(np.random.uniform(size=[self.hidden,1])
+        
+        #Note: if output layer is linear, we should initialize this layer
+        # separately since the output is equivalent to revenue
+        # given output from previous layer is between 0 and 1, essentially
+        # all parameters in this layer should be initialized
+        # correspondingly...
+        # if we switch to LP-adjusted model, these weights 
+        # should be initialized differently
+        self.weight_output = tf.Variable(self.init_level_output*np.random.normal(size=[self.hidden,1])
                                         , dtype=tf.float32
                                         , name="weight_output"
                                         )
-        self.bias_output = tf.Variable(np.random.uniform(size=[1,1])
+        self.bias_output = tf.Variable(self.init_level_output*np.random.normal(size=[1,1])
                                         , dtype=tf.float32
                                         , name="bias_output"
                                         )
-        self.lambda_s0 = 1e-6
-        self.lambda_t0 = 1e-6
+        self.lambda_s0 = 1.0
+        self.lambda_t0 = 1.0
         
-        num_hidden_layer = 5
+        num_hidden_layer = 2
 
         # determine each layer
         # 0 -- sigmoid
@@ -93,7 +107,7 @@ class error_model_simple_nn:
         
         #with hidden units we can initialize size
         hidden_units = [self.hidden] * num_hidden_layer        
-        self.weight_hidden = [tf.Variable(np.random.uniform(size=[din,dout])
+        self.weight_hidden = [tf.Variable(self.init_level*np.random.normal(size=[din,dout])
                                         , dtype=tf.float32
                                         , name="weight_hidden"
                                         ) 
@@ -104,14 +118,18 @@ class error_model_simple_nn:
                     for din,dout in zip(hidden_units, hidden_units[1:])]
 
     def build(self):
+#        self.loss = self.generate_bellman_error_deep() \
+#                        + self.generate_boundary_error_deep()
         self.loss = self.generate_bellman_error_deep() \
-                        + self.generate_boundary_error_deep()
+                        + tf.multiply(tf.constant(0.0, dtype=tf.float32), self.generate_boundary_error_deep())
         self.train_step =tf.train.AdagradOptimizer(0.1).minimize(self.loss)
+        self.gradients = tf.gradients(self.loss, tf.trainable_variables())
 
     # given a sequence of weights and biases, build network
     # use flag to control layer
     def build_network(self, state_input, weights, biases):
         state = state_input
+        print(len(weights), state.shape)
         for w,b,m in zip(weights, biases, self.flag):
             if m == 0:
                 # sigmoid = 0
@@ -119,6 +137,7 @@ class error_model_simple_nn:
             else:
                 # linear = 1, default
                 state = tf.matmul(state, w) + b
+            print("print state", state)
         return state
 
     def generate_bellman_error_deep(self):       
@@ -196,6 +215,32 @@ class error_model_simple_nn:
                              self.mask: data_mask
                              })            
         print("loss = %.6f"%result_loss, "bellman error = %.6f"%result_bellman, "boundary error = %.6f"%result_boundary)
+
+    def read_gradients(self, session, data_lhs,data_rhs_1,data_rhs_2,data_mask):
+        #read we have set up the network and it is running
+        #all we need to do is to refer to objects we created
+        # and are interested
+        param = tf.trainable_variables()
+        result = session.run(
+                [self.gradients] + param
+                , feed_dict={self.state_lhs: data_lhs,
+                             self.state_rhs_1: data_rhs_1,
+                             self.state_rhs_2: data_rhs_2,
+                             self.mask: data_mask
+                             })            
+        gradients = result[0]
+        values = result[1:]
+        print("check gradients:")    
+        for g,p,v in zip(gradients, param, values):
+            print("parameter ", p.name)            
+            print("value = %.4f"%np.mean(v))
+            print("gradient mean="
+                  , np.mean(g)
+                  , " max = "
+                  , np.amax(g)
+                  , " min = "
+                  , np.amin(g))
+        print("check gradients end")    
         
     def read_param(self, session, data_lhs,data_rhs_1,data_rhs_2,data_mask):
         #read we have set up the network and it is running
@@ -220,6 +265,8 @@ ts = time.time()
 ops.reset_default_graph()
 np.set_printoptions(precision=4)
 np.random.seed(4321)
+
+debug_lp = 0
 
 #business parameter initialization
 num_nights = 14
@@ -255,7 +302,7 @@ product_prob[0] = 1.0 - np.sum(product_prob)
 #computational graph generation
 
 #define a state (in batch) and a linear value function
-batch_size = 64
+batch_size = 16
 #LHS is the value function for current state at time t
 #for each state, we need num_nights real value inputs for available
 # inventory, and +1 for time
@@ -272,15 +319,19 @@ dim_state_space = num_nights+1
 model = error_model_simple_nn()
 model.build()
 
-num_batches = 10
+num_batches = 1000
+
+first_run = True
 with tf.Session() as sess:    
-    sess.run(tf.global_variables_initializer())
+    sess.run(tf.global_variables_initializer())    
+    
     for batch in range(num_batches):
         #generate data for LHS V(s,t)
         data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
         time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                                       
         
-        lp_bound_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+        if debug_lp:
+            lp_bound_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
         
         #generate data for V(s-a(p),t-1)
         #batch x product x night(state)
@@ -293,11 +344,12 @@ with tf.Session() as sess:
         
         #t-1
         time_rhs = time_lhs-1
-        lp_bound_rhs_2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+        if debug_lp:
+            lp_bound_rhs_2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
         time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
 
-        
-        lp_bound_rhs_1 = [ lp(data_rhs_1[b][p], time_rhs[b][p]*product_prob) 
+        if debug_lp:
+            lp_bound_rhs_1 = [ lp(data_rhs_1[b][p], time_rhs[b][p]*product_prob) 
                             for b,p in itertools.product(range(batch_size), range(num_product)) ]                
         
         
@@ -305,6 +357,14 @@ with tf.Session() as sess:
         data_lhs = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs, num_steps)])
         data_rhs_1 = np.concatenate([np.divide(data_rhs_1, capacity), np.divide(time_rhs, num_steps)], axis=2)  
         data_rhs_2 = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs-1, num_steps)])
+        
+        if first_run:
+            first_run = False
+            print("Before even training, check parameters:")
+            model.read_loss(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
+            model.read_param(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
+            model.read_gradients(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
+            print("Before even training, check parameters end\n")
                 
         #we will have to run the session twice since tensorflow does
         # not ensure all tasks are executed in a pre-determined order per
@@ -312,10 +372,13 @@ with tf.Session() as sess:
         # this is the training step
         model.train(sess,data_lhs,data_rhs_1,data_rhs_2,data_mask)
         # statistics accumulation
-        if 1 and batch % 20 == 0:              
+        if 1 and batch % 100 == 0:              
             print("batch = ", batch)
             model.read_loss(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
-            model.read_param(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
+            #model.read_param(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
+            model.read_gradients(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
+            print("\n")
+            
             
 
 print("total program time = %.2f seconds" % (time.time()-ts))
