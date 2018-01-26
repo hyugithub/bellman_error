@@ -9,6 +9,7 @@ from tensorflow.python.framework import ops
 import time
 from ortools.linear_solver import pywraplp
 import itertools
+import json
 
 def lp(cap_supply, cap_demand):
     ts = time.time()
@@ -103,16 +104,16 @@ class error_model_simple_nn:
         self.lambda_s0 = 1.0
         self.lambda_t0 = 1.0
         
-        num_hidden_layer = 5
+        self.num_hidden_layer = 5
 
         # determine each layer
         # 0 -- sigmoid
         # default: linear
-        self.flag = [0]*(num_hidden_layer+1)
+        self.flag = [0]*(self.num_hidden_layer+1)
         self.flag[-1] = 1
         
         #with hidden units we can initialize size
-        hidden_units = [self.hidden] * num_hidden_layer        
+        hidden_units = [self.hidden] * self.num_hidden_layer        
         self.weight_hidden = [tf.Variable(self.init_level*np.random.normal(size=[din,dout])
                                         , dtype=tf.float32
                                         , name="weight_hidden"
@@ -359,7 +360,8 @@ class error_model_simple_nn:
 ts = time.time()
 ops.reset_default_graph()
 np.set_printoptions(precision=4)
-np.random.seed(4321)
+seed = 4321
+np.random.seed(seed)
 
 if sys.platform == "win32":
     model_path = "C:/Users/hyu/Desktop/bellman/model/"
@@ -424,7 +426,7 @@ dim_state_space = num_nights+1
 model = error_model_simple_nn()
 model.build()
 
-num_batches = 20
+num_batches = 1000
 
 first_run = True
 
@@ -513,7 +515,7 @@ with tf.Session() as sess:
                     , lp_bound_rhs_1
                     , lp_bound_rhs_2)
         # statistics accumulation
-        if 1 and batch % 10 == 0:              
+        if 1 and batch % 100 == 0:              
             print("batch = ", batch)
             model.read_loss(sess
                     , data_lhs
@@ -534,6 +536,32 @@ with tf.Session() as sess:
             print("\n")
             
     save_path = saver.save(sess, fname_output_model) 
+
+param_dict = {}
+param_dict["num_batches"] = num_batches
+param_dict["hidden_dim"] = model.hidden
+param_dict["init_level"] = model.init_level
+param_dict["init_level_output"] = model.init_level_output
+param_dict["lambda_s0"] = model.lambda_s0
+param_dict["lambda_t0"] = model.lambda_t0
+param_dict["num_hidden_layer"] = model.num_hidden_layer
+param_dict["timestamp"] = timestamp
+
+param_dict["num_nights"] = num_nights
+param_dict["capacity"] = capacity
+param_dict["null product"] = product_null
+param_dict["num_product"] = num_product
+param_dict["num_steps"] = num_steps
+param_dict["batch_size"] = batch_size
+param_dict["dim_state_space"] = dim_state_space
+
+param_dict["num_batches"] = num_batches
+
+fname_out_json = "".join([model_path,"dp.",timestamp,".json"])
+
+with open(fname_out_json, 'w') as f:
+    json.dump(param_dict, f)
+
 
 print("total program time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
 
