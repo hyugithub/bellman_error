@@ -405,7 +405,7 @@ product_prob[0] = 1.0 - np.sum(product_prob)
 #computational graph generation
 
 #define a state (in batch) and a linear value function
-batch_size = 64
+batch_size = 128
 #LHS is the value function for current state at time t
 #for each state, we need num_nights real value inputs for available
 # inventory, and +1 for time
