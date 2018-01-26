@@ -21,10 +21,22 @@ class error_model_simple_nn:
         self.value_lhs = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_1 = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_2 = tf.constant(0.0, dtype=tf.float32)
-        self.weight_input = tf.Variable(np.random.uniform(size=[dim_state_space, self.hidden]), dtype=tf.float32)
-        self.bias_input = tf.Variable(np.random.uniform(size=[self.hidden]), dtype=tf.float32)
-        self.weight_output = tf.Variable(np.random.uniform(size=[self.hidden,1]), dtype=tf.float32)
-        self.bias_output = tf.Variable(np.random.uniform(size=[1,1]), dtype=tf.float32)
+        self.weight_input = tf.Variable(np.random.uniform(size=[dim_state_space, self.hidden])
+                                        , dtype=tf.float32
+                                        , name="weight_input"
+                                        )
+        self.bias_input = tf.Variable(np.random.uniform(size=[self.hidden])
+                                        , dtype=tf.float32
+                                        , name="bias_input"
+                                        )
+        self.weight_output = tf.Variable(np.random.uniform(size=[self.hidden,1])
+                                        , dtype=tf.float32
+                                        , name="weight_output"
+                                        )
+        self.bias_output = tf.Variable(np.random.uniform(size=[1,1])
+                                        , dtype=tf.float32
+                                        , name="bias_output"
+                                        )
         self.lambda_s0 = 1e-6
         self.lambda_t0 = 1e-6
         
@@ -38,8 +50,15 @@ class error_model_simple_nn:
         
         #with hidden units we can initialize size
         hidden_units = [self.hidden] * num_hidden_layer        
-        self.weight_hidden = [tf.Variable(np.random.uniform(size=[din,dout]), dtype=tf.float32) for din,dout in zip(hidden_units, hidden_units[1:])]
-        self.bias_hidden = [tf.Variable(np.random.uniform(size=[dout]), dtype=tf.float32) for din,dout in zip(hidden_units, hidden_units[1:])]        
+        self.weight_hidden = [tf.Variable(np.random.uniform(size=[din,dout])
+                                        , dtype=tf.float32
+                                        , name="weight_hidden"
+                                        ) 
+                    for din,dout in zip(hidden_units, hidden_units[1:])]
+        self.bias_hidden = [tf.Variable(np.random.uniform(size=[dout])
+                                        , dtype=tf.float32
+                                        , name="bias_hidden") 
+                    for din,dout in zip(hidden_units, hidden_units[1:])]
 
     def build(self):
         self.loss = self.generate_bellman_error_deep() \
@@ -139,14 +158,18 @@ class error_model_simple_nn:
         #read we have set up the network and it is running
         #all we need to do is to refer to objects we created
         # and are interested
-        result_lhs, result_rhs_1, result_rhs_2, result_weights, result_bias = session.run(
-                [self.value_lhs, self.value_rhs_1, self.value_rhs_2, self.weight_input, self.bias_input]
+        w_input, b_input, w_output, b_output, w_hidden, b_hidden = session.run(
+                [self.weight_input, self.bias_input, self.weight_output, self.bias_output, self.weight_hidden, self.bias_hidden]
                 , feed_dict={self.state_lhs: data_lhs,
                              self.state_rhs_1: data_rhs_1,
                              self.state_rhs_2: data_rhs_2,
                              self.mask: data_mask
                              })            
-        print("weights = ", result_weights, " \nbias = ", result_bias)
+        print("input layer:", "%.4f"%np.mean(w_input), "%.4f"%np.mean(b_input))    
+        for w,b in zip(w_hidden,b_hidden):
+            print("hidden layer:", "%.4f"%np.mean(w), "%.4f"%np.mean(b))    
+        print("output layer:", "%.4f"%np.mean(w_output), "%.4f"%np.mean(b_output))    
+        #print("weights = ", result_weights, " \nbias = ", result_bias)
     #EOC
     
 #general initialization
@@ -174,7 +197,7 @@ for i in range(0,num_nights):
     product_resource_map[i+num_nights][i] = 1.0
 #product_resource_map[num_product-1][num_nights-1] = 1.0
 
-product_revenue = 100*np.random.uniform(size=[num_product])
+product_revenue = 1000*np.random.uniform(size=[num_product])
 product_revenue[product_null] = 0
 #total demand
 product_demand = np.random.uniform(size=[num_product])*capacity
@@ -206,7 +229,7 @@ dim_state_space = num_nights+1
 model = error_model_simple_nn()
 model.build()
 
-num_batches = 1000
+num_batches = 200
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())
     for batch in range(num_batches):
@@ -236,9 +259,11 @@ with tf.Session() as sess:
         # this is the training step
         model.train(sess,data_lhs,data_rhs_1,data_rhs_2,data_mask)
         # statistics accumulation
-        if 1 and batch % 100 == 0:              
+        if 1 and batch % 20 == 0:              
             print("batch = ", batch)
             model.read_loss(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
+            model.read_param(sess, data_lhs, data_rhs_1, data_rhs_2, data_mask)
+            
 
 print("total program time = %.2f seconds" % (time.time()-ts))
 
