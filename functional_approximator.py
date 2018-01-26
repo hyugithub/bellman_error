@@ -353,6 +353,88 @@ class error_model_simple_nn:
         print("output layer:", "%.4f"%np.mean(w_output), "%.4f"%np.mean(b_output))    
         #print("weights = ", result_weights, " \nbias = ", result_bias)
     #EOC
+
+#generate a batch of data for training and/or validation
+def generate_batch():
+    data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
+    time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                                       
+    
+    lpb_lhs = np.ones(batch_size)
+    lpb_rhs2 = np.ones(batch_size)
+    lpb_rhs1 = np.ones([batch_size, num_product])
+    
+    if debug_lp:
+        lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+    
+    #generate data for V(s-a(p),t-1)
+    #batch x product x night(state)
+    resource_consumed = np.tile(product_resource_map, (batch_size,1,1))
+    rhs1 = np.repeat(data_lhs_0.flatten(), num_product)
+    rhs1 = np.reshape(rhs1, (batch_size, num_nights, -1))
+    rhs1 = np.swapaxes(rhs1, 1,2,) - resource_consumed
+    mask = (1-np.any(rhs1<0, axis=2)).astype(int)        
+    rhs1 = np.maximum(rhs1, 0)             
+    
+    #t-1
+    time_rhs = time_lhs-1
+    if debug_lp:            
+        lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+    time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
+
+    if debug_lp:
+        lpb_rhs1 = [ lp(rhs1[b][p], time_rhs[b][p]*product_prob) 
+                        for b,p in itertools.product(range(batch_size), range(num_product)) ]                
+        lpb_rhs1 = np.reshape(lpb_rhs1, [batch_size,-1])
+    
+    
+    #scaling and stacking
+    lhs = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs, num_steps)])
+    rhs1 = np.concatenate([np.divide(rhs1, capacity), np.divide(time_rhs, num_steps)], axis=2)  
+    rhs2 = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs-1, num_steps)])
+    
+    return lhs, rhs1, rhs2, mask, lpb_lhs, lpb_rhs1, lpb_rhs2
+    #EOF 
+    
+#generate validation batch data for t = 0 (the easier one)
+def generate_batch_t0():
+    #generate one state
+    data_lhs_0 = np.random.choice(capacity+1, [num_nights])
+    #and fix it
+    data_lhs_0 = np.tile(data_lhs_0, (batch_size,1))
+    # sort time
+    time_lhs = np.reshape(np.sort(np.random.choice(range(1,num_steps), [batch_size,1]), axis=None), [batch_size,-1])
+    
+    lpb_lhs = np.ones(batch_size)
+    lpb_rhs2 = np.ones(batch_size)
+    lpb_rhs1 = np.ones([batch_size, num_product])    
+    
+    #generate data for V(s-a(p),t-1)
+    #batch x product x night(state)
+    resource_consumed = np.tile(product_resource_map, (batch_size,1,1))
+    rhs1 = np.repeat(data_lhs_0.flatten(), num_product)
+    rhs1 = np.reshape(rhs1, (batch_size, num_nights, -1))
+    rhs1 = np.swapaxes(rhs1, 1,2,) - resource_consumed
+    mask = (1-np.any(rhs1<0, axis=2)).astype(int)        
+    rhs1 = np.maximum(rhs1, 0)             
+    
+    #t-1
+    time_rhs = time_lhs-1
+    if debug_lp:            
+        lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+    time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
+
+    if debug_lp:
+        lpb_rhs1 = [ lp(rhs1[b][p], time_rhs[b][p]*product_prob) 
+                        for b,p in itertools.product(range(batch_size), range(num_product)) ]                
+        lpb_rhs1 = np.reshape(lpb_rhs1, [batch_size,-1])
+    
+    #scaling and stacking
+    lhs = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs, num_steps)])
+    rhs1 = np.concatenate([np.divide(rhs1, capacity), np.divide(time_rhs, num_steps)], axis=2)  
+    rhs2 = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs-1, num_steps)])
+    
+    return lhs, rhs1, rhs2, mask, lpb_lhs, lpb_rhs1, lpb_rhs2
+    #EOF     
     
 #general initialization
 ts = time.time()
@@ -405,7 +487,7 @@ product_prob[0] = 1.0 - np.sum(product_prob)
 #computational graph generation
 
 #define a state (in batch) and a linear value function
-batch_size = 128
+batch_size = 16
 #LHS is the value function for current state at time t
 #for each state, we need num_nights real value inputs for available
 # inventory, and +1 for time
@@ -422,52 +504,21 @@ dim_state_space = num_nights+1
 model = error_model_simple_nn()
 model.build()
 
-num_batches = 15
+num_batches = 11
 
 first_run = True
 
 saver = tf.train.Saver()
 
+
+    
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())    
     
     for batch in range(num_batches):
         #generate data for LHS V(s,t)
-        data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
-        time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                                       
         
-        lp_bound_lhs = np.ones(batch_size)
-        lp_bound_rhs_2 = np.ones(batch_size)
-        lp_bound_rhs_1 = np.ones([batch_size, num_product])
-        
-        if debug_lp:
-            lp_bound_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
-        
-        #generate data for V(s-a(p),t-1)
-        #batch x product x night(state)
-        resource_consumed = np.tile(product_resource_map, (batch_size,1,1))
-        data_rhs_1 = np.repeat(data_lhs_0.flatten(), num_product)
-        data_rhs_1 = np.reshape(data_rhs_1, (batch_size, num_nights, -1))
-        data_rhs_1 = np.swapaxes(data_rhs_1, 1,2,) - resource_consumed
-        data_mask = (1-np.any(data_rhs_1<0, axis=2)).astype(int)        
-        data_rhs_1 = np.maximum(data_rhs_1, 0)             
-        
-        #t-1
-        time_rhs = time_lhs-1
-        if debug_lp:            
-            lp_bound_rhs_2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
-        time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
-
-        if debug_lp:
-            lp_bound_rhs_1 = [ lp(data_rhs_1[b][p], time_rhs[b][p]*product_prob) 
-                            for b,p in itertools.product(range(batch_size), range(num_product)) ]                
-            lp_bound_rhs_1 = np.reshape(lp_bound_rhs_1, [batch_size,-1])
-        
-        
-        #scaling and stacking
-        data_lhs = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs, num_steps)])
-        data_rhs_1 = np.concatenate([np.divide(data_rhs_1, capacity), np.divide(time_rhs, num_steps)], axis=2)  
-        data_rhs_2 = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs-1, num_steps)])
+        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch()
         
         if first_run:
             first_run = False
@@ -532,6 +583,32 @@ with tf.Session() as sess:
             print("\n")
             
     save_path = saver.save(sess, fname_output_model) 
+
+    print("validation for random samples:")    
+    for vb in range(10):
+        print("validation batch ", vb)
+        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch()
+        model.read_loss(sess
+                    , data_lhs
+                    , data_rhs_1
+                    , data_rhs_2
+                    , data_mask
+                    , lp_bound_lhs
+                    , lp_bound_rhs_1
+                    , lp_bound_rhs_2)
+        
+    print("validation for monotonicity when state is fixed:")    
+    for vb in range(1):
+        print("validation batch ", vb)
+        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_t0()
+        model.read_loss(sess
+                    , data_lhs
+                    , data_rhs_1
+                    , data_rhs_2
+                    , data_mask
+                    , lp_bound_lhs
+                    , lp_bound_rhs_1
+                    , lp_bound_rhs_2)        
 
 print("total program time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
 
