@@ -5,6 +5,49 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
 import time
+from ortools.linear_solver import pywraplp
+import itertools
+
+def lp(cap_supply, cap_demand):
+    ts = time.time()
+    solver = pywraplp.Solver('LinearExample',
+                           pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
+    #variables are number of products sold
+    #tmp = cap_demand[0]
+    #print(type(tmp))
+    x = [solver.NumVar(0.0, 1.0*cap_demand[p], "".join(["x",str(p)]))
+    #x = [solver.NumVar(0.0, 10, "".join(["x",str(p)])) 
+            for p in range(num_product)]
+    
+    #constraints are capacity for each night
+    constraints = []   
+    for night in range(num_nights):
+        #print(cap_supply[night])
+        con = solver.Constraint(0.0, float(cap_supply[night]))
+        #con = solver.Constraint(0, capacity)
+        for p in range(num_product):        
+            con.SetCoefficient(x[p], product_resource_map[p][night])
+        constraints.append(con)
+    
+    #objective        
+    objective = solver.Objective()
+    for p in range(num_product):
+        objective.SetCoefficient(x[p], product_revenue[p])        
+    objective.SetCoefficient(x[product_null], -1.0)        
+    objective.SetMaximization()    
+    
+    solver.Solve()
+    
+    if 0:    
+        for p in range(num_product):
+            print("p=", p, "price = %2.f"%product_revenue[p], "demand = %.2f"%cap_demand[p], ' allocation = %.2f'%(x[p].solution_value()))
+            
+        print('Solution = %.2f' % objective.Value())
+        sol2 = np.sum([product_revenue[p]*x[p].solution_value() for p in range(num_product)])
+        print("sol2 = %.2f" % sol2)
+        
+        print("total time = %.2f"%(time.time()-ts))    
+    return objective.Value()
 
 class error_model_simple_nn:
     def __init__(self):
@@ -229,24 +272,34 @@ dim_state_space = num_nights+1
 model = error_model_simple_nn()
 model.build()
 
-num_batches = 200
+num_batches = 10
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())
     for batch in range(num_batches):
-        #generate data for LHS
+        #generate data for LHS V(s,t)
         data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
-        time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                               
-        #generate data for RHS
+        time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                                       
+        
+        lp_bound_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+        
+        #generate data for V(s-a(p),t-1)
         #batch x product x night(state)
         resource_consumed = np.tile(product_resource_map, (batch_size,1,1))
         data_rhs_1 = np.repeat(data_lhs_0.flatten(), num_product)
         data_rhs_1 = np.reshape(data_rhs_1, (batch_size, num_nights, -1))
         data_rhs_1 = np.swapaxes(data_rhs_1, 1,2,) - resource_consumed
         data_mask = (1-np.any(data_rhs_1<0, axis=2)).astype(int)        
-        data_rhs_1 = np.maximum(data_rhs_1, 0)
+        data_rhs_1 = np.maximum(data_rhs_1, 0)             
+        
         #t-1
         time_rhs = time_lhs-1
-        time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))        
+        lp_bound_rhs_2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+        time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
+
+        
+        lp_bound_rhs_1 = [ lp(data_rhs_1[b][p], time_rhs[b][p]*product_prob) 
+                            for b,p in itertools.product(range(batch_size), range(num_product)) ]                
+        
         
         #scaling and stacking
         data_lhs = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs, num_steps)])
