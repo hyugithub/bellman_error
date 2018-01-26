@@ -167,6 +167,7 @@ class error_model_simple_nn:
 #            print(V_s1_tm1)
         
         value_lhs = V_s_t
+        self.value = value_lhs
         value_rhs_2 = V_s_tm1
         
         #V(s-a(p),t-1) - V(s,t-1) + r(p)
@@ -239,8 +240,17 @@ class error_model_simple_nn:
                                  , self.state_rhs_1: data_rhs_1
                                  , self.state_rhs_2: data_rhs_2
                                  , self.mask: data_mask
-                                 })
-        
+                                 })        
+
+    def predict(self
+                  , session
+                  , data_lhs 
+                  , lp_bound_lhs
+                  ):
+        return session.run(self.value_lhs
+                , feed_dict={self.state_lhs: data_lhs
+                             , self.lp_bound_lhs: lp_bound_lhs})       
+    
     def read_loss(self
                   , session
                   , data_lhs 
@@ -252,8 +262,8 @@ class error_model_simple_nn:
                   , lp_bound_rhs_2 = None                  
                   ):
         if debug_lp:
-            result_loss, result_bellman, result_boundary = session.run(
-                [self.loss, self.bellman_error, self.boundary_error]
+            result_loss, result_bellman, result_boundary, result_value = session.run(
+                [self.loss, self.bellman_error, self.boundary_error, self.value_lhs]
                 , feed_dict={self.state_lhs: data_lhs
                              , self.state_rhs_1: data_rhs_1
                              , self.state_rhs_2: data_rhs_2
@@ -263,8 +273,8 @@ class error_model_simple_nn:
                              , self.lp_bound_rhs_2: lp_bound_rhs_2                             
                              })            
         else:
-            result_loss, result_bellman, result_boundary = session.run(
-                [self.loss, self.bellman_error, self.boundary_error]
+            result_loss, result_bellman, result_boundary, result_value = session.run(
+                [self.loss, self.bellman_error, self.boundary_error, self.value_lhs]
                 , feed_dict={self.state_lhs: data_lhs
                              , self.state_rhs_1: data_rhs_1
                              , self.state_rhs_2: data_rhs_2
@@ -395,8 +405,57 @@ def generate_batch():
     return lhs, rhs1, rhs2, mask, lpb_lhs, lpb_rhs1, lpb_rhs2
     #EOF 
     
-#generate validation batch data for t = 0 (the easier one)
-def generate_batch_t0():
+#generate validation data batch with fix time
+def generate_batch_fix_time():
+    #generate monotonic state sequence
+    booking = np.random.choice(range(0,2), [batch_size, num_nights])
+    for k in range(1, batch_size):
+        booking[k] = booking[k] + booking[k-1]
+    #data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
+    data_lhs_0 = np.random.choice(capacity+1, [num_nights]) + booking
+    data_lhs_0 = np.minimum(data_lhs_0, capacity)
+    #fix time
+    time_lhs = np.random.choice(range(1,num_steps))*np.ones([batch_size,1])
+    
+    lpb_lhs = np.ones(batch_size)
+    lpb_rhs2 = np.ones(batch_size)
+    lpb_rhs1 = np.ones([batch_size, num_product])
+    
+    if debug_lp:
+        lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+    
+    #generate data for V(s-a(p),t-1)
+    #batch x product x night(state)
+    resource_consumed = np.tile(product_resource_map, (batch_size,1,1))
+    rhs1 = np.repeat(data_lhs_0.flatten(), num_product)
+    rhs1 = np.reshape(rhs1, (batch_size, num_nights, -1))
+    rhs1 = np.swapaxes(rhs1, 1,2,) - resource_consumed
+    mask = (1-np.any(rhs1<0, axis=2)).astype(int)        
+    rhs1 = np.maximum(rhs1, 0)             
+    
+    #t-1
+    time_rhs = time_lhs-1
+    if debug_lp:            
+        lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+    time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
+
+    if debug_lp:
+        lpb_rhs1 = [ lp(rhs1[b][p], time_rhs[b][p]*product_prob) 
+                        for b,p in itertools.product(range(batch_size), range(num_product)) ]                
+        lpb_rhs1 = np.reshape(lpb_rhs1, [batch_size,-1])
+    
+    
+    #scaling and stacking
+    lhs = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs, num_steps)])
+    rhs1 = np.concatenate([np.divide(rhs1, capacity), np.divide(time_rhs, num_steps)], axis=2)  
+    rhs2 = np.hstack([np.divide(data_lhs_0, capacity), np.divide(time_lhs-1, num_steps)])
+    
+    return lhs, rhs1, rhs2, mask, lpb_lhs, lpb_rhs1, lpb_rhs2
+    #EOF     
+    
+#generate validation batch data for monotonicity checking 
+# with constant state
+def generate_batch_t0():    
     #generate one state
     data_lhs_0 = np.random.choice(capacity+1, [num_nights])
     #and fix it
@@ -407,6 +466,9 @@ def generate_batch_t0():
     lpb_lhs = np.ones(batch_size)
     lpb_rhs2 = np.ones(batch_size)
     lpb_rhs1 = np.ones([batch_size, num_product])    
+    
+    if debug_lp:
+        lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])    
     
     #generate data for V(s-a(p),t-1)
     #batch x product x night(state)
@@ -598,17 +660,20 @@ with tf.Session() as sess:
                     , lp_bound_rhs_2)
         
     print("validation for monotonicity when state is fixed:")    
-    for vb in range(1):
+    for vb in range(10):
         print("validation batch ", vb)
-        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_t0()
-        model.read_loss(sess
-                    , data_lhs
-                    , data_rhs_1
-                    , data_rhs_2
-                    , data_mask
-                    , lp_bound_lhs
-                    , lp_bound_rhs_1
-                    , lp_bound_rhs_2)        
+        #data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_t0()
+        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_fix_time()
+#        model.read_loss(sess
+#                    , data_lhs
+#                    , data_rhs_1
+#                    , data_rhs_2
+#                    , data_mask
+#                    , lp_bound_lhs
+#                    , lp_bound_rhs_1
+#                    , lp_bound_rhs_2)        
+        val = model.predict(sess, data_lhs, lp_bound_lhs)
+        print(val)
 
 print("total program time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
 
