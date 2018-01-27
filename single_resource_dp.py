@@ -5,6 +5,8 @@ Created on Sat Jan 27 11:44:57 2018
 @author: hyu
 """
 import numpy as np
+import time
+np.set_printoptions(precision=2)
 
 def single_resource_dp(num_product, num_steps, cap, product_prob, adj_revenue):
     # num_product scalar 
@@ -16,8 +18,8 @@ def single_resource_dp(num_product, num_steps, cap, product_prob, adj_revenue):
     #temporary inputs
     num_product = 28
     #num_steps = 128900
-    num_steps = 1289
-    cap = 100
+    num_steps = 3
+    cap = 10
     product_prob = np.asarray([9.9000e-01, 6.0436e-05, 5.9443e-04, 6.6212e-04, 1.1665e-04,
        7.8424e-05, 2.1006e-04, 2.3389e-05, 6.4966e-04, 4.6338e-04,
        7.2199e-04, 3.8423e-04, 2.9192e-04, 1.8903e-04, 4.6666e-04,
@@ -32,17 +34,50 @@ def single_resource_dp(num_product, num_steps, cap, product_prob, adj_revenue):
     
     # according to RM literature, tstep = 0 means no time left    
     
+    ts = time.time()
+    
+    result = np.zeros((num_steps, cap+1))
     #boundary conditions
-    V_tm1 = np.full(cap+1, 0.0)
+    V_tm1 = np.full(cap+1, 0.0)        
     for tstep in range(1, num_steps):
-        V_t = np.full(cap+1, 0.0)        
-        #no need to calculate V(0,t) since it is already 0.0
-        for x in range(1, cap+1):
-            rev = [max(V_tm1[x-1] + adj_revenue[p], V_tm1[x]) 
-                    for p in range(0, num_product)]
-            V_t[x] = np.dot(product_prob, rev)
-        V_tm1 = V_t
-                
+        if 1:    
+            #V_tm1[x-1]
+            lhs = V_tm1[1:]
+            #V_tm1[x] for x >= 1
+            rhs = V_tm1[:-1]
+            
+            #expand LHS for every product p
+            lhs = np.reshape(np.repeat(lhs,num_product), (lhs.shape[0],num_product))
+            lhs = lhs + adj_revenue
+            
+            #max(V1,V2) for every product
+            rev = np.maximum(lhs, np.reshape(rhs, (rhs.shape[0],-1)))
+            print(rev)
+            
+            #expectation over all products
+            V_t = np.sum(np.multiply(rev, np.reshape(product_prob, (-1,num_product))), axis=1)
+            V_tm1 = np.concatenate([np.zeros(1),V_t])
+            #print(V_tm1.shape)
+        else:    
+            V_t = np.full(cap+1, 0.0)        
+            #no need to calculate V(0,t) since it is already 0.0
+            for x in range(1, cap+1):
+                rev = [max(V_tm1[x-1] + adj_revenue[p], V_tm1[x]) 
+                        for p in range(0, num_product)]
+                print(rev)
+                #print(np.dot(product_prob, rev))
+                V_t[x] = np.dot(product_prob, rev)
+            V_tm1 = V_t
+        print(V_tm1)
+        result[tstep] = V_tm1
+
+    print("min = %.2f"%np.amin(V_tm1)
+    , "max = %.2f"%np.amax(V_tm1)
+    , "mean = %.2f"%np.mean(V_tm1)
+    , "number of level", V_tm1.shape
+    )
+    print("run time total = %.3f seconds" % (time.time()-ts)
+        , " per step = %.4f"%((time.time()-ts)/num_steps))
         # V(x,t) = E[max (price(p)u + V(x-u,t-1))]
         # V(s,t) = max
     
