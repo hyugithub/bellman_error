@@ -39,7 +39,7 @@ def simulation():
                 revenue[pol] = revenue[pol] + revenue0
                 state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
         for r1,r2 in zip(revenue["fifo"], revenue["dnn"]):
-            print("lift = %2.f"%(r2/r1-1.0))    
+            print("lift = %.2f"%(r2/r1-1.0))    
 
 def lp(cap_supply, cap_demand):
     #print(cap_supply.shape, cap_demand.shape)
