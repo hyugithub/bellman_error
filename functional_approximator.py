@@ -9,7 +9,38 @@ import time
 from ortools.linear_solver import pywraplp
 import itertools
 
+def simulation():    
+    # we should use the same seed for both fifo and new policy 
+    # to reduce variance
+    seed0 = seed_simulation    
+    np.random.seed(seed0)
+    # initial state
+    #state_initial = np.ones([batch_size, num_nights])*capacity
+    revenue = {}
+    revenue["fifo"] = np.zeros(batch_size)
+    revenue["dnn"]  = np.zeros(batch_size)
+    
+    # for each time step, generate demand
+    demand = np.random.choice(range(num_product)
+                                , size=(num_steps, batch_size)
+                                , p=product_prob
+                             )
+    state = {}
+    state["fifo"] = np.ones([batch_size, num_nights])*capacity
+    state["dnn"] = np.ones([batch_size, num_nights])*capacity
+        
+    for s in np.arange(start=num_steps-1, stop=0, step=-1):
+        resource = np.stack([product_resource_map[p] for p in demand[s]])
+        for pol in policy_list:
+            admit = policy[pol].do(state[pol], resource, demand[s], s)
+            revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
+            revenue[pol] = revenue[pol] + revenue0
+            state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
+    for pol in policy_list:                    
+        print(pol, np.mean(revenue[pol]))
+
 def lp(cap_supply, cap_demand):
+    #print(cap_supply.shape, cap_demand.shape)
     ts = time.time()
     solver = pywraplp.Solver('LinearExample',
                            pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
@@ -498,11 +529,82 @@ def generate_batch_t0():
     return lhs, rhs1, rhs2, mask, lpb_lhs, lpb_rhs1, lpb_rhs2
     #EOF     
     
+class policy_fifo():      
+    def do(self, s, r, p, tstep):
+        #print(type(s), type(r), type(p))
+        return (1.0-np.any((s-r)<0, axis=1)).astype(int)
+    #EOC
+    
+class policy_dnn():      
+    def do(self, s, r, p, tstep):
+        # check resource
+        #print(s.shape, p.shape)
+        flag = (1.0-np.any((s-r)<0, axis=1)).astype(int)
+
+        #batch preparation -- avoid LP if possible
+        lpb_lhs = np.ones(batch_size)
+        lpb_rhs = np.ones(batch_size)
+        for b, avail, prod in zip(range(batch_size),flag,p):
+            #the logic for dnn policy is complicated because of
+            #performanc concerns:
+            # 1. for any state and product pair, we need to evaluate
+            # the difference between V(s,t) and V(s-a(p),t) (this part is 
+            # based on p.89 of TPRM book)
+            # this means generating all data for LP and other things
+            # on the fly
+            # 2. because the cost of step 1 is heavy, we should always
+            # avoid calling LP and/or DNN if necessary
+            # 3. we don't need to call LP/DNN if there is no physical 
+            # capacity or for product null
+            
+            # 4. moreover, we can keep all previously calculated V(s,t)
+            # in a hash table so that getting it is fast            
+            if avail <= 1e-6 or prod == product_null:
+                continue
+            #otherwise it is not a null product and there is avail
+            # so we must calculate Vs
+            #please note that, because of the structure of our design
+            #we have to generate lp bounds for all products, not only
+            #the product currently being asssessed            
+            
+            lpb_lhs[b] = lp(s[b].astype(np.float32)
+                        , (tstep*product_prob).astype(np.float32))
+            
+            lpb_rhs[b] = lp((s[b]-r[b]).astype(np.float32)
+                        , (tstep*product_prob).astype(np.float32))
+            #and then we call DNN
+        time_lhs = np.full((batch_size,1), tstep)                            
+        
+        
+        #TODO: call NN only once if batch size can vary
+        
+        #this is V(s,t)
+        data_lhs = np.hstack([np.divide(s, capacity), np.divide(time_lhs, num_steps)])        
+        V_lhs = model.predict(sess, data_lhs, lpb_lhs)
+        # V(s-a(p),t)
+        data_rhs = np.hstack([np.divide(s-r, capacity), np.divide(time_lhs, num_steps)])        
+        V_rhs = model.predict(sess, data_rhs, lpb_rhs)
+        
+        #print(p.shape)
+        bid_price = np.reshape(np.array([product_revenue[pp] for pp in p]), [batch_size,1])
+        bid_price_delta = bid_price - (V_lhs - V_rhs)
+        avail = (bid_price_delta >= 0.0).astype(int).flatten()
+        
+        #print(avail.shape, flag.shape)        
+        return np.multiply(avail, flag)
+        
+        return flag
+        #EOF
+        
+    #EOC        
+    
 #general initialization
 ts = time.time()
 ops.reset_default_graph()
 np.set_printoptions(precision=4)
 np.random.seed(4321)
+
+seed_simulation = 12345
 
 if sys.platform == "win32":
     model_path = "C:/Users/hyu/Desktop/bellman/model/"
@@ -571,9 +673,7 @@ num_batches = 11
 first_run = True
 
 saver = tf.train.Saver()
-
-
-    
+   
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())    
     
@@ -647,7 +747,7 @@ with tf.Session() as sess:
     save_path = saver.save(sess, fname_output_model) 
 
     print("validation for random samples:")    
-    for vb in range(10):
+    for vb in range(1):
         print("validation batch ", vb)
         data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch()
         model.read_loss(sess
@@ -660,7 +760,7 @@ with tf.Session() as sess:
                     , lp_bound_rhs_2)
         
     print("validation for monotonicity when state is fixed:")    
-    for vb in range(10):
+    for vb in range(1):
         print("validation batch ", vb)
         #data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_t0()
         data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_fix_time()
@@ -675,51 +775,12 @@ with tf.Session() as sess:
         val = model.predict(sess, data_lhs, lp_bound_lhs)
         print(val)
 
-print("total model building time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
-
-# next part is validation
-
-class policy_fifo():      
-    def do(self, s, r):
-        return (1.0-np.any((s-r)<0, axis=1)).astype(int)
-    #EOC
+    print("total model building time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
     
-class policy_dnn():      
-    def do(self, s, r):
-        return (1.0-np.any((s-r)<0, axis=1)).astype(int)
-    #EOC    
+    policy_list = ["fifo", "dnn"]
+    policy = dict(zip(policy_list,[policy_fifo(), policy_dnn()]))
 
-p_fifo = policy_fifo()
-
-seed_simulation = 12345
-
-def simulation_fifo():    
-    # we should use the same seed for both fifo and new policy 
-    # to reduce variance
-    seed0 = seed_simulation    
-    np.random.seed(seed0)
-    # initial state
-    state_initial = np.ones([batch_size, num_nights])*capacity
-    revenue = np.zeros(batch_size)
-    
-    # for each time step, generate demand
-    demand = np.random.choice(range(num_product)
-                                , size=(num_steps, batch_size)
-                                , p=product_prob
-                             )
-    
-    state = state_initial
-    for s in range(num_steps):
-        resource = np.stack([product_resource_map[p] for p in demand[s]])
-        #FIFO policy: admit as long as there is sufficient resource
-        admit = p_fifo.do(state, resource)
-        #TODO: new policy -- gosh this has to be part of LP
-        revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
-        revenue = revenue + revenue0
-        state = state - np.multiply(resource, np.reshape(admit, [batch_size,1]))
-
-    print(revenue)
-    
-ts = time.time()    
-simulation_fifo()
-print("validation time = %.2f seconds"% (time.time()-ts))
+    # next part is validation
+    ts = time.time()    
+    simulation()
+    print("validation time = %.2f seconds"% (time.time()-ts))
