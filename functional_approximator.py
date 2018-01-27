@@ -16,28 +16,30 @@ def simulation():
     np.random.seed(seed0)
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
-    revenue = {}
-    revenue["fifo"] = np.zeros(batch_size)
-    revenue["dnn"]  = np.zeros(batch_size)
     
-    # for each time step, generate demand
-    demand = np.random.choice(range(num_product)
-                                , size=(num_steps, batch_size)
-                                , p=product_prob
-                             )
-    state = {}
-    state["fifo"] = np.ones([batch_size, num_nights])*capacity
-    state["dnn"] = np.ones([batch_size, num_nights])*capacity
+    for _ in range(5):
+        revenue = {}
+        revenue["fifo"] = np.zeros(batch_size)
+        revenue["dnn"]  = np.zeros(batch_size)
         
-    for s in np.arange(start=num_steps-1, stop=0, step=-1):
-        resource = np.stack([product_resource_map[p] for p in demand[s]])
-        for pol in policy_list:
-            admit = policy[pol].do(state[pol], resource, demand[s], s)
-            revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
-            revenue[pol] = revenue[pol] + revenue0
-            state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
-    for pol in policy_list:                    
-        print(pol, np.mean(revenue[pol]))
+        # for each time step, generate demand
+        demand = np.random.choice(range(num_product)
+                                    , size=(num_steps, batch_size)
+                                    , p=product_prob
+                                 )
+        state = {}
+        state["fifo"] = np.ones([batch_size, num_nights])*capacity
+        state["dnn"] = np.ones([batch_size, num_nights])*capacity
+            
+        for s in np.arange(start=num_steps-1, stop=0, step=-1):
+            resource = np.stack([product_resource_map[p] for p in demand[s]])
+            for pol in policy_list:
+                admit = policy[pol].do(state[pol], resource, demand[s], s)
+                revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
+                revenue[pol] = revenue[pol] + revenue0
+                state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
+        for r1,r2 in zip(revenue["fifo"], revenue["dnn"]):
+            print("lift = %2.f"%(r2/r1-1.0))    
 
 def lp(cap_supply, cap_demand):
     #print(cap_supply.shape, cap_demand.shape)
@@ -676,7 +678,7 @@ saver = tf.train.Saver()
    
 with tf.Session() as sess:    
     sess.run(tf.global_variables_initializer())    
-    
+        
     for batch in range(num_batches):
         #generate data for LHS V(s,t)
         
