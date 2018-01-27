@@ -675,15 +675,51 @@ with tf.Session() as sess:
         val = model.predict(sess, data_lhs, lp_bound_lhs)
         print(val)
 
-print("total program time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
+print("total model building time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
 
-#in debug model, build np version of lhs and rhs
-#np_lhs = np.sum(np.multiply(data_lhs, result_weights),axis=1) + result_bias
-#np_rhs_2 = np.sum(np.multiply(data_rhs_2, result_weights),axis=1) + result_bias
-#
-#np_rhs_1 = np.sum(np.multiply(data_rhs_1, result_weights), axis=2) + result_bias
-#np_rhs_1 = np_rhs_1 - np.reshape(np_rhs_2, [batch_size,-1]) + np.asarray(product_revenue)
-#np_rhs_1 = np.maximum(np_rhs_1, 0.0)
-#np_rhs_1 = np.multiply(np_rhs_1, data_mask)
-#np_rhs_1 = np.multiply(np_rhs_1, product_prob)
-#np_rhs_1 = np.sum(np_rhs_1, axis=1)
+# next part is validation
+
+class policy_fifo():      
+    def do(self, s, r):
+        return (1.0-np.any((s-r)<0, axis=1)).astype(int)
+    #EOC
+    
+class policy_dnn():      
+    def do(self, s, r):
+        return (1.0-np.any((s-r)<0, axis=1)).astype(int)
+    #EOC    
+
+p_fifo = policy_fifo()
+
+seed_simulation = 12345
+
+def simulation_fifo():    
+    # we should use the same seed for both fifo and new policy 
+    # to reduce variance
+    seed0 = seed_simulation    
+    np.random.seed(seed0)
+    # initial state
+    state_initial = np.ones([batch_size, num_nights])*capacity
+    revenue = np.zeros(batch_size)
+    
+    # for each time step, generate demand
+    demand = np.random.choice(range(num_product)
+                                , size=(num_steps, batch_size)
+                                , p=product_prob
+                             )
+    
+    state = state_initial
+    for s in range(num_steps):
+        resource = np.stack([product_resource_map[p] for p in demand[s]])
+        #FIFO policy: admit as long as there is sufficient resource
+        admit = p_fifo.do(state, resource)
+        #TODO: new policy -- gosh this has to be part of LP
+        revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
+        revenue = revenue + revenue0
+        state = state - np.multiply(resource, np.reshape(admit, [batch_size,1]))
+
+    print(revenue)
+    
+ts = time.time()    
+simulation_fifo()
+print("validation time = %.2f seconds"% (time.time()-ts))
