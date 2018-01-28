@@ -43,6 +43,12 @@ def lp(cap_supply, cap_demand, param, return_dual = False):
     #print("dual value:")
     #print(dual)
     
+    if 1:
+        #complementary slackness
+        sol2 = np.dot(dual, cap_supply)
+        print(sol2)
+        print(objective.Value())
+    
     if 0:    
         for p in range(num_product):
             print("p=", p, "price = %2.f"%product_revenue[p], "demand = %.2f"%cap_demand[p], ' allocation = %.2f'%(x[p].solution_value()))

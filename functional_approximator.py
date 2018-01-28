@@ -11,6 +11,8 @@ import itertools
 from lp_module import lp
 from simulation import simulation
 
+import config
+
 class error_model_simple_nn:
     def __init__(self):
         #inputs
@@ -487,13 +489,12 @@ np.set_printoptions(precision=4)
 
 #all parameters
 conf = dict()
+config.param_init(conf)
 
-seed_training = 4321
+seed_training = conf["seed_training"]
 np.random.seed(seed_training)
-conf["seed_training"] = seed_training
 
-seed_simulation = 12345
-conf["seed_simulation"] = seed_simulation
+seed_simulation = conf["seed_simulation"]
 
 if sys.platform == "win32":
     model_path = "C:/Users/hyu/Desktop/bellman/model/"
@@ -504,65 +505,41 @@ else:
     
 fname_output_model = model_path+"dp.ckpt"
 
-debug_lp = 1
-conf["debug_lp"] = debug_lp
+debug_lp = conf["debug_lp"]
 
 #business parameter initialization
-num_nights = 14
-conf["num_nights"] = num_nights
-capacity = 100
-conf["capacity"] = capacity
+num_nights = conf["num_nights"] 
+capacity = conf["capacity"]
 # product zero is the no-revenue no resource product
 # added for simplicity
-product_null = 0
-conf["product_null"] = product_null
+product_null = conf["product_null"]
 # unfortunately, to avoid confusion we need to add a fairly 
 # complex product matrix
 # if there are N nights, there are N one-night product from 
 # 1 to N; there are also N-1 two-night products from N+1 to 2N-1
-num_product = num_nights*2
-conf["num_product"] = num_product
-product_resource_map = np.zeros((num_product, num_nights))
-for i in range(1,num_nights):
-    product_resource_map[i][i-1] = 1.0
-    product_resource_map[i][i] = 1.0
-for i in range(0,num_nights):    
-    product_resource_map[i+num_nights][i] = 1.0
-#product_resource_map[num_product-1][num_nights-1] = 1.0    
-conf["product_resource_map"] = product_resource_map
+num_product = conf["num_product"]
+product_resource_map = conf["product_resource_map"] 
+product_revenue = conf["product_revenue"] 
 
-product_revenue = 1000*np.random.uniform(size=[num_product])
-product_revenue[product_null] = 0
-conf["product_revenue"] = product_revenue
-#total demand
-product_demand = np.random.uniform(size=[num_product])*capacity
-product_demand[product_null]  = 0
-conf["product_demand"] = product_demand
+product_demand = conf["product_demand"] 
 
-num_steps = int(np.sum(product_demand)/0.01)
-conf["num_steps"] = num_steps
+num_steps = conf["num_steps"]
 
 #arrival rate (including)
-product_prob = np.divide(product_demand,num_steps)
-product_prob[0] = 1.0 - np.sum(product_prob)
-conf["product_prob"] = product_prob
+product_prob = conf["product_prob"] 
 
 #computational graph generation
 
 #define a state (in batch) and a linear value function
-batch_size = 16
-conf["batch_size"] = batch_size
+batch_size = conf["batch_size"] 
 #LHS is the value function for current state at time t
 #for each state, we need num_nights real value inputs for available
 # inventory, and +1 for time
-dim_state_space = num_nights+1
-conf["dim_state_space"] = dim_state_space
+dim_state_space = conf["dim_state_space"] 
 
 #tensorflow model inputs (or really state space samples)
 #V(s,t)
 #try neural network model: input->hidden->output
-
-
 
 #define linear approximation model
 #model = error_model_linear()
@@ -570,11 +547,9 @@ model = error_model_simple_nn()
 model.build()
 conf["model"] = model
 
-num_batches = 11
-conf["num_batches"] = num_batches
+num_batches_training = conf["num_batches_training"] 
 
-policy_list = ["fifo", "dnn"]
-conf["policy_list"] = policy_list
+policy_list = conf["policy_list"] 
 
 first_run = True
 
@@ -584,7 +559,7 @@ with tf.Session() as sess:
     conf["sess"] = sess
     sess.run(tf.global_variables_initializer())    
         
-    for batch in range(num_batches):
+    for batch in range(num_batches_training):
         #generate data for LHS V(s,t)
         
         data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch()
@@ -682,7 +657,7 @@ with tf.Session() as sess:
         val = model.predict(sess, data_lhs, lp_bound_lhs)
         print(val)
 
-    print("total model building time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
+    print("total model building time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches_training))
     
 
     # next part is validation

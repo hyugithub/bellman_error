@@ -21,9 +21,9 @@ def single_resource_dp(adj_revenue, resource, param):
     
     num_product = param["num_product"]
     num_steps = param["num_steps"]
-    cap = conf["cap"]
+    cap = param["capacity"]
     product_prob = param["product_prob"]
-    resource = param["num_product"]
+    #resource = param["num_product"]
         
     # according to RM literature, tstep = 0 means no time left    
     
