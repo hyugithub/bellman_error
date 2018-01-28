@@ -17,7 +17,7 @@ def simulation():
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
     
-    for _ in range(5):
+    for _ in range(1):
         revenue = {}
         revenue["fifo"] = np.zeros(batch_size)
         revenue["dnn"]  = np.zeros(batch_size)
@@ -41,14 +41,19 @@ def simulation():
         for r1,r2 in zip(revenue["fifo"], revenue["dnn"]):
             print("lift = %.2f"%(r2/r1-1.0))    
 
-def lp(cap_supply, cap_demand):
+def lp(cap_supply, cap_demand, param, return_dual = False):
     #print(cap_supply.shape, cap_demand.shape)
     ts = time.time()
+    #loading parameters
+    num_product = param["num_product"]    
+    num_nights = param["num_nights"]    
+    product_resource_map = param["product_resource_map"]    
+    product_revenue = param["product_revenue"]    
+    product_null = param["product_null"]    
+
     solver = pywraplp.Solver('LinearExample',
                            pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
-    #variables are number of products sold
-    #tmp = cap_demand[0]
-    #print(type(tmp))
+    #variables are number of products sold    
     x = [solver.NumVar(0.0, 1.0*cap_demand[p], "".join(["x",str(p)]))
     #x = [solver.NumVar(0.0, 10, "".join(["x",str(p)])) 
             for p in range(num_product)]
@@ -72,6 +77,10 @@ def lp(cap_supply, cap_demand):
     
     solver.Solve()
     
+    dual = np.array([c.dual_value() for c in constraints])
+    #print("dual value:")
+    #print(dual)
+    
     if 0:    
         for p in range(num_product):
             print("p=", p, "price = %2.f"%product_revenue[p], "demand = %.2f"%cap_demand[p], ' allocation = %.2f'%(x[p].solution_value()))
@@ -81,6 +90,9 @@ def lp(cap_supply, cap_demand):
         print("sol2 = %.2f" % sol2)
         
         print("total time = %.2f"%(time.time()-ts))    
+    
+    if return_dual:
+        return objective.Value(), dual
     return objective.Value()
 
 class error_model_simple_nn:
@@ -407,7 +419,9 @@ def generate_batch():
     lpb_rhs1 = np.ones([batch_size, num_product])
     
     if debug_lp:
-        lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+        lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32)
+                                , (time_lhs[b]*product_prob).astype(np.float32)
+                                , conf) for b in range(batch_size)])
     
     #generate data for V(s-a(p),t-1)
     #batch x product x night(state)
@@ -421,12 +435,17 @@ def generate_batch():
     #t-1
     time_rhs = time_lhs-1
     if debug_lp:            
-        lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+        lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32)
+                                , (time_rhs[b]*product_prob).astype(np.float32)
+                                , conf
+                                ) for b in range(batch_size)])
     time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
 
     if debug_lp:
-        lpb_rhs1 = [ lp(rhs1[b][p], time_rhs[b][p]*product_prob) 
-                        for b,p in itertools.product(range(batch_size), range(num_product)) ]                
+        lpb_rhs1 = [ lp(rhs1[b][p]
+                        , time_rhs[b][p]*product_prob
+                        , conf
+                        ) for b,p in itertools.product(range(batch_size), range(num_product)) ]                
         lpb_rhs1 = np.reshape(lpb_rhs1, [batch_size,-1])
     
     
@@ -455,7 +474,10 @@ def generate_batch_fix_time():
     lpb_rhs1 = np.ones([batch_size, num_product])
     
     if debug_lp:
-        lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+        lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32)
+                            , (time_lhs[b]*product_prob).astype(np.float32)
+                            , conf
+                            ) for b in range(batch_size)])
     
     #generate data for V(s-a(p),t-1)
     #batch x product x night(state)
@@ -469,12 +491,17 @@ def generate_batch_fix_time():
     #t-1
     time_rhs = time_lhs-1
     if debug_lp:            
-        lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+        lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32)
+                                , (time_rhs[b]*product_prob).astype(np.float32)
+                                , conf
+                                ) for b in range(batch_size)])
     time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
 
     if debug_lp:
-        lpb_rhs1 = [ lp(rhs1[b][p], time_rhs[b][p]*product_prob) 
-                        for b,p in itertools.product(range(batch_size), range(num_product)) ]                
+        lpb_rhs1 = [ lp(rhs1[b][p]
+                        , time_rhs[b][p]*product_prob
+                        , conf
+                        ) for b,p in itertools.product(range(batch_size), range(num_product)) ]                
         lpb_rhs1 = np.reshape(lpb_rhs1, [batch_size,-1])
     
     
@@ -501,7 +528,10 @@ def generate_batch_t0():
     lpb_rhs1 = np.ones([batch_size, num_product])    
     
     if debug_lp:
-        lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_lhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])    
+        lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32)
+                                , (time_lhs[b]*product_prob).astype(np.float32)
+                                , conf
+                                ) for b in range(batch_size)])    
     
     #generate data for V(s-a(p),t-1)
     #batch x product x night(state)
@@ -515,11 +545,14 @@ def generate_batch_t0():
     #t-1
     time_rhs = time_lhs-1
     if debug_lp:            
-        lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32), (time_rhs[b]*product_prob).astype(np.float32)) for b in range(batch_size)])
+        lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32)
+                                , (time_rhs[b]*product_prob).astype(np.float32)
+                                , conf
+                                ) for b in range(batch_size)])
     time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
 
     if debug_lp:
-        lpb_rhs1 = [ lp(rhs1[b][p], time_rhs[b][p]*product_prob) 
+        lpb_rhs1 = [ lp(rhs1[b][p], time_rhs[b][p]*product_prob, conf) 
                         for b,p in itertools.product(range(batch_size), range(num_product)) ]                
         lpb_rhs1 = np.reshape(lpb_rhs1, [batch_size,-1])
     
@@ -570,10 +603,14 @@ class policy_dnn():
             #the product currently being asssessed            
             
             lpb_lhs[b] = lp(s[b].astype(np.float32)
-                        , (tstep*product_prob).astype(np.float32))
+                        , (tstep*product_prob).astype(np.float32)
+                        , conf
+                        )
             
             lpb_rhs[b] = lp((s[b]-r[b]).astype(np.float32)
-                        , (tstep*product_prob).astype(np.float32))
+                        , (tstep*product_prob).astype(np.float32)
+                        , conf
+                        )
             #and then we call DNN
         time_lhs = np.full((batch_size,1), tstep)                            
         
@@ -604,9 +641,16 @@ class policy_dnn():
 ts = time.time()
 ops.reset_default_graph()
 np.set_printoptions(precision=4)
-np.random.seed(4321)
+
+#all parameters
+conf = dict()
+
+seed_training = 4321
+np.random.seed(seed_training)
+conf["seed_training"] = seed_training
 
 seed_simulation = 12345
+conf["seed_simulation"] = seed_simulation
 
 if sys.platform == "win32":
     model_path = "C:/Users/hyu/Desktop/bellman/model/"
@@ -618,46 +662,58 @@ else:
 fname_output_model = model_path+"dp.ckpt"
 
 debug_lp = 1
+conf["debug_lp"] = debug_lp
 
 #business parameter initialization
 num_nights = 14
+conf["num_nights"] = num_nights
 capacity = 100
+conf["capacity"] = capacity
 # product zero is the no-revenue no resource product
 # added for simplicity
 product_null = 0
+conf["product_null"] = product_null
 # unfortunately, to avoid confusion we need to add a fairly 
 # complex product matrix
 # if there are N nights, there are N one-night product from 
 # 1 to N; there are also N-1 two-night products from N+1 to 2N-1
 num_product = num_nights*2
+conf["num_product"] = num_product
 product_resource_map = np.zeros((num_product, num_nights))
 for i in range(1,num_nights):
     product_resource_map[i][i-1] = 1.0
     product_resource_map[i][i] = 1.0
 for i in range(0,num_nights):    
     product_resource_map[i+num_nights][i] = 1.0
-#product_resource_map[num_product-1][num_nights-1] = 1.0
+#product_resource_map[num_product-1][num_nights-1] = 1.0    
+conf["product_resource_map"] = product_resource_map
 
 product_revenue = 1000*np.random.uniform(size=[num_product])
 product_revenue[product_null] = 0
+conf["product_revenue"] = product_revenue
 #total demand
 product_demand = np.random.uniform(size=[num_product])*capacity
 product_demand[product_null]  = 0
+conf["product_demand"] = product_demand
 
 num_steps = int(np.sum(product_demand)/0.01)
+conf["num_steps"] = num_steps
 
 #arrival rate (including)
 product_prob = np.divide(product_demand,num_steps)
 product_prob[0] = 1.0 - np.sum(product_prob)
+conf["product_prob"] = product_prob
 
 #computational graph generation
 
 #define a state (in batch) and a linear value function
 batch_size = 16
+conf["batch_size"] = batch_size
 #LHS is the value function for current state at time t
 #for each state, we need num_nights real value inputs for available
 # inventory, and +1 for time
 dim_state_space = num_nights+1
+conf["dim_state_space"] = dim_state_space
 
 #tensorflow model inputs (or really state space samples)
 #V(s,t)
@@ -671,6 +727,7 @@ model = error_model_simple_nn()
 model.build()
 
 num_batches = 11
+conf["num_batches"] = num_batches
 
 first_run = True
 
@@ -786,3 +843,22 @@ with tf.Session() as sess:
     ts = time.time()    
     simulation()
     print("validation time = %.2f seconds"% (time.time()-ts))
+    
+#generate LP-DP decomposition policy
+# we may need to save data in file and read
+# during simulation in trunk    
+def lpdp(param):
+    #do a lp and use dual to do dp for each night
+    num_nights = param["num_nights"]
+    capacity = param["capacity"]
+    product_demand = param["product_demand"]
+    _, dual = lp(np.full(num_nights, capacity)
+                , product_demand
+                , conf
+                , True)
+    print(dual)
+    
+    for night in range(num_nights):
+        print("solve DP for night", night)
+    
+    return 1.0
