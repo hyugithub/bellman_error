@@ -36,10 +36,11 @@ def single_resource_dp(adj_revenue, resource, param):
         #calculate backward induction:
         #V(x,t) = sum [Pr(p)*max(price(p)+V(x-a(p),t-1), V(x,t-1))]
         if 1:    
-            #x-
+            # x-a(p) for all x and p
             x = np.reshape(np.repeat(range(0,cap+1), num_product)
                         , (-1, num_product)) - resource
             
+            # max(V)
             #note: before flatten it is inv level x product
             y = np.maximum(x,0).astype(int).flatten()
             
@@ -76,6 +77,7 @@ def single_resource_dp(adj_revenue, resource, param):
         , " per step = %.4f"%((time.time()-ts)/num_steps))
         # V(x,t) = E[max (price(p)u + V(x-u,t-1))]
         # V(s,t) = max
+    return result
 
 if 0:    
     #debug only

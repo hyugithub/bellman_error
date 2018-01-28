@@ -44,14 +44,27 @@ def lpdp(param):
     
     #adjustment for every product, every night
     
-    for night in range(num_nights):
-        print("solve DP for night", night)
-        adj_rev = adj_revenue[:,night]
-        resource = product_resource_map[:,night]
-        single_resource_dp(adj_rev, resource, conf)
+    result = np.stack([single_resource_dp(adj_revenue[:,night]
+                                        , product_resource_map[:,night]
+                                        , conf)
+                        for night in range(num_nights)])
+    np.save("temp.npy", result)
+#    for night in range(num_nights):
+#        print("solve DP for night", night)
+#        adj_rev = adj_revenue[:,night]
+#        resource = product_resource_map[:,night]
+#        single_resource_dp(adj_rev, resource, conf)
     return 1.0
 
 np.set_printoptions(precision=4)
 conf = dict()
 config.param_init(conf)
 lpdp(conf)
+
+print("total number to be saved: "
+      , conf["num_steps"]*conf["num_nights"]*conf["capacity"]
+      )
+
+def test():
+    tmp = np.load("temp.npy")
+    print(tmp.shape)
