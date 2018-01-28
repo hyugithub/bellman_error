@@ -18,10 +18,51 @@ import itertools
 from lp_module import lp
 
 class policy_fifo():      
-    def do(self, s, r, p, tstep,param):
+    def do(self, s, r, p, tstep, param):
+        #s is remaining capacity batch_size x state
+        #r is resource needed for product p batch_size x ?
+        #p is products batch_size x 1
         #print(type(s), type(r), type(p))
         return (1.0-np.any((s-r)<0, axis=1)).astype(int)
     #EOC
+    
+class policy_lpdp():      
+    def __init__(self, param):
+        fname = "../bid_price/value_function_lpdp.npy"
+        
+        self.num_steps = param["num_steps"]
+        self.num_product = param["num_product"]
+        self.batch_size = param["batch_size"]
+        self.num_nights = param["num_nights"]
+        self.product_resource_map = param["product_resource_map"]
+        
+        #from night x tstep x inventory to
+        # tstep x night x inventory
+        value = np.swapaxes(np.load(fname), 0, 1)
+        #bid price is delta V
+        self.bid_price = value[:,:,1:] - value[:,:,:-1]
+        
+    def do(self, s, r, p, tstep, param):
+        #print(type(s), type(r), type(p))
+        product_revenue = param["product_revenue"]
+        flag = (1.0-np.any((s-r)<0, axis=1)).astype(int)
+        #return flag
+        #batch_size = param["batch_size"]
+        flag2 = np.zeros(self.batch_size)
+        for b in range(self.batch_size):
+            #product
+            state = s[b]
+            prod = p[b]
+            rev = product_revenue[prod]
+            bid_price = 0.0
+            for night in range(self.num_nights):
+                if self.product_resource_map[prod][night] >= 1e-6:
+                    idx = max(state[night].astype(int)-1,0)
+                    bid_price += self.bid_price[tstep][night][idx]
+            if rev >= bid_price:
+                flag2[b] = 1.0
+        return np.logical_and(flag, flag2)
+    #EOC    
     
 class policy_dnn():      
     def do(self, s, r, p, tstep, param):
@@ -95,7 +136,7 @@ class policy_dnn():
         #print(avail.shape, flag.shape)        
         return np.multiply(avail, flag)
         
-        return flag
+        #return flag
         #EOF
         
     #EOC        
@@ -114,27 +155,42 @@ def simulation(param):
     product_resource_map = param["product_resource_map"]
     product_revenue = param["product_revenue"]
     batch_size = param["batch_size"]
-    policy_list = param["policy_list"]
     
-    policy = dict(zip(policy_list,[policy_fifo(), policy_dnn()]))
+    
+    #policy_list = param["policy_list"]
+    policy_list = ["fifo", "dnn", "lpdp"]
+    
+    #policy = dict(zip(policy_list,[policy_fifo(), policy_dnn()]))
+    
+    policy = dict()
+    for p in policy_list:
+        if p == "fifo":
+            policy[p] = policy_fifo()
+        if p == "dnn":
+            policy[p] = policy_dnn()
+        if p == "lpdp":
+            #policy[p] = policy_fifo()
+            policy[p] = policy_lpdp(param)            
         
     np.random.seed(seed_simulation)
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
     
     for _ in range(1):
-        revenue = {}
-        revenue["fifo"] = np.zeros(batch_size)
-        revenue["dnn"]  = np.zeros(batch_size)
+        revenue = dict(zip(policy_list, [np.zeros(batch_size)]*len(policy_list)))
+        #revenue["fifo"] = np.zeros(batch_size)
+        #revenue["dnn"]  = np.zeros(batch_size)
         
         # for each time step, generate demand
         demand = np.random.choice(range(num_product)
                                     , size=(num_steps, batch_size)
                                     , p=product_prob
                                  )
-        state = {}
-        state["fifo"] = np.ones([batch_size, num_nights])*capacity
-        state["dnn"] = np.ones([batch_size, num_nights])*capacity
+        state = dict(zip(policy_list
+                , [np.ones([batch_size, num_nights])*capacity]*len(policy_list)
+                ))
+        #state["fifo"] = np.ones([batch_size, num_nights])*capacity
+        #state["dnn"] = np.ones([batch_size, num_nights])*capacity
             
         for s in np.arange(start=num_steps-1, stop=0, step=-1):
             resource = np.stack([product_resource_map[p] for p in demand[s]])
@@ -143,6 +199,7 @@ def simulation(param):
                 revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
                 revenue[pol] = revenue[pol] + revenue0
                 state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
-        for r1,r2 in zip(revenue["fifo"], revenue["dnn"]):
-            print("lift = %.2f"%(r2/r1-1.0))    
-            
+        for r1,r2,r3 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"]):
+            print("dnn lift = %.2f"%(r2/r1-1.0)
+                , "lpdp lift = %.2f"%(r3/r1-1.0)
+                )                

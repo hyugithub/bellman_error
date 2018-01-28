@@ -43,7 +43,7 @@ def lp(cap_supply, cap_demand, param, return_dual = False):
     #print("dual value:")
     #print(dual)
     
-    if 1:
+    if 0:
         #complementary slackness
         sol2 = np.dot(dual, cap_supply)
         print(sol2)

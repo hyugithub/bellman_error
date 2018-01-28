@@ -346,7 +346,7 @@ def generate_batch():
     resource_consumed = np.tile(product_resource_map, (batch_size,1,1))
     rhs1 = np.repeat(data_lhs_0.flatten(), num_product)
     rhs1 = np.reshape(rhs1, (batch_size, num_nights, -1))
-    rhs1 = np.swapaxes(rhs1, 1,2,) - resource_consumed
+    rhs1 = np.swapaxes(rhs1, 1,2) - resource_consumed
     mask = (1-np.any(rhs1<0, axis=2)).astype(int)        
     rhs1 = np.maximum(rhs1, 0)             
     
@@ -549,8 +549,6 @@ conf["model"] = model
 
 num_batches_training = conf["num_batches_training"] 
 
-policy_list = conf["policy_list"] 
-
 first_run = True
 
 saver = tf.train.Saver()
@@ -663,7 +661,7 @@ with tf.Session() as sess:
     # next part is validation
     ts = time.time()    
     simulation(conf)
-    print("validation time = %.2f seconds"% (time.time()-ts))
+    print("simulation validation time = %.2f seconds"% (time.time()-ts))
     
 #generate LP-DP decomposition policy
 # we may need to save data in file and read

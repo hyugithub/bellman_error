@@ -88,8 +88,8 @@ def param_init(param):
     num_batches_training = 11
     param["num_batches_training"] = num_batches_training
     
-    policy_list = ["fifo", "dnn"]
-    param["policy_list"] = policy_list
+    #policy_list = ["fifo", "dnn"]
+    #param["policy_list"] = policy_list
 
 if 0:
     conf = dict()
