@@ -6,94 +6,10 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
 import time
-from ortools.linear_solver import pywraplp
+#from ortools.linear_solver import pywraplp
 import itertools
-
-def simulation():    
-    # we should use the same seed for both fifo and new policy 
-    # to reduce variance
-    seed0 = seed_simulation    
-    np.random.seed(seed0)
-    # initial state
-    #state_initial = np.ones([batch_size, num_nights])*capacity
-    
-    for _ in range(1):
-        revenue = {}
-        revenue["fifo"] = np.zeros(batch_size)
-        revenue["dnn"]  = np.zeros(batch_size)
-        
-        # for each time step, generate demand
-        demand = np.random.choice(range(num_product)
-                                    , size=(num_steps, batch_size)
-                                    , p=product_prob
-                                 )
-        state = {}
-        state["fifo"] = np.ones([batch_size, num_nights])*capacity
-        state["dnn"] = np.ones([batch_size, num_nights])*capacity
-            
-        for s in np.arange(start=num_steps-1, stop=0, step=-1):
-            resource = np.stack([product_resource_map[p] for p in demand[s]])
-            for pol in policy_list:
-                admit = policy[pol].do(state[pol], resource, demand[s], s)
-                revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
-                revenue[pol] = revenue[pol] + revenue0
-                state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
-        for r1,r2 in zip(revenue["fifo"], revenue["dnn"]):
-            print("lift = %.2f"%(r2/r1-1.0))    
-
-def lp(cap_supply, cap_demand, param, return_dual = False):
-    #print(cap_supply.shape, cap_demand.shape)
-    ts = time.time()
-    #loading parameters
-    num_product = param["num_product"]    
-    num_nights = param["num_nights"]    
-    product_resource_map = param["product_resource_map"]    
-    product_revenue = param["product_revenue"]    
-    product_null = param["product_null"]    
-
-    solver = pywraplp.Solver('LinearExample',
-                           pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
-    #variables are number of products sold    
-    x = [solver.NumVar(0.0, 1.0*cap_demand[p], "".join(["x",str(p)]))
-    #x = [solver.NumVar(0.0, 10, "".join(["x",str(p)])) 
-            for p in range(num_product)]
-    
-    #constraints are capacity for each night
-    constraints = []   
-    for night in range(num_nights):
-        #print(cap_supply[night])
-        con = solver.Constraint(0.0, float(cap_supply[night]))
-        #con = solver.Constraint(0, capacity)
-        for p in range(num_product):        
-            con.SetCoefficient(x[p], product_resource_map[p][night])
-        constraints.append(con)
-    
-    #objective        
-    objective = solver.Objective()
-    for p in range(num_product):
-        objective.SetCoefficient(x[p], product_revenue[p])        
-    objective.SetCoefficient(x[product_null], -1.0)        
-    objective.SetMaximization()    
-    
-    solver.Solve()
-    
-    dual = np.array([c.dual_value() for c in constraints])
-    #print("dual value:")
-    #print(dual)
-    
-    if 0:    
-        for p in range(num_product):
-            print("p=", p, "price = %2.f"%product_revenue[p], "demand = %.2f"%cap_demand[p], ' allocation = %.2f'%(x[p].solution_value()))
-            
-        print('Solution = %.2f' % objective.Value())
-        sol2 = np.sum([product_revenue[p]*x[p].solution_value() for p in range(num_product)])
-        print("sol2 = %.2f" % sol2)
-        
-        print("total time = %.2f"%(time.time()-ts))    
-    
-    if return_dual:
-        return objective.Value(), dual
-    return objective.Value()
+from lp_module import lp
+from simulation import simulation
 
 class error_model_simple_nn:
     def __init__(self):
@@ -563,80 +479,7 @@ def generate_batch_t0():
     
     return lhs, rhs1, rhs2, mask, lpb_lhs, lpb_rhs1, lpb_rhs2
     #EOF     
-    
-class policy_fifo():      
-    def do(self, s, r, p, tstep):
-        #print(type(s), type(r), type(p))
-        return (1.0-np.any((s-r)<0, axis=1)).astype(int)
-    #EOC
-    
-class policy_dnn():      
-    def do(self, s, r, p, tstep):
-        # check resource
-        #print(s.shape, p.shape)
-        flag = (1.0-np.any((s-r)<0, axis=1)).astype(int)
-
-        #batch preparation -- avoid LP if possible
-        lpb_lhs = np.ones(batch_size)
-        lpb_rhs = np.ones(batch_size)
-        for b, avail, prod in zip(range(batch_size),flag,p):
-            #the logic for dnn policy is complicated because of
-            #performanc concerns:
-            # 1. for any state and product pair, we need to evaluate
-            # the difference between V(s,t) and V(s-a(p),t) (this part is 
-            # based on p.89 of TPRM book)
-            # this means generating all data for LP and other things
-            # on the fly
-            # 2. because the cost of step 1 is heavy, we should always
-            # avoid calling LP and/or DNN if necessary
-            # 3. we don't need to call LP/DNN if there is no physical 
-            # capacity or for product null
-            
-            # 4. moreover, we can keep all previously calculated V(s,t)
-            # in a hash table so that getting it is fast            
-            if avail <= 1e-6 or prod == product_null:
-                continue
-            #otherwise it is not a null product and there is avail
-            # so we must calculate Vs
-            #please note that, because of the structure of our design
-            #we have to generate lp bounds for all products, not only
-            #the product currently being asssessed            
-            
-            lpb_lhs[b] = lp(s[b].astype(np.float32)
-                        , (tstep*product_prob).astype(np.float32)
-                        , conf
-                        )
-            
-            lpb_rhs[b] = lp((s[b]-r[b]).astype(np.float32)
-                        , (tstep*product_prob).astype(np.float32)
-                        , conf
-                        )
-            #and then we call DNN
-        time_lhs = np.full((batch_size,1), tstep)                            
-        
-        
-        #TODO: call NN only once if batch size can vary
-        
-        #this is V(s,t)
-        data_lhs = np.hstack([np.divide(s, capacity), np.divide(time_lhs, num_steps)])        
-        V_lhs = model.predict(sess, data_lhs, lpb_lhs)
-        # V(s-a(p),t)
-        data_rhs = np.hstack([np.divide(s-r, capacity), np.divide(time_lhs, num_steps)])        
-        V_rhs = model.predict(sess, data_rhs, lpb_rhs)
-        
-        #print(p.shape)
-        bid_price = np.reshape(np.array([product_revenue[pp] for pp in p]), [batch_size,1])
-        bid_price_delta = bid_price - (V_lhs - V_rhs)
-        avail = (bid_price_delta >= 0.0).astype(int).flatten()
-        
-        #print(avail.shape, flag.shape)        
-        return np.multiply(avail, flag)
-        
-        return flag
-        #EOF
-        
-    #EOC        
-    
+      
 #general initialization
 ts = time.time()
 ops.reset_default_graph()
@@ -725,15 +568,20 @@ conf["dim_state_space"] = dim_state_space
 #model = error_model_linear()
 model = error_model_simple_nn()
 model.build()
+conf["model"] = model
 
 num_batches = 11
 conf["num_batches"] = num_batches
+
+policy_list = ["fifo", "dnn"]
+conf["policy_list"] = policy_list
 
 first_run = True
 
 saver = tf.train.Saver()
    
 with tf.Session() as sess:    
+    conf["sess"] = sess
     sess.run(tf.global_variables_initializer())    
         
     for batch in range(num_batches):
@@ -836,12 +684,10 @@ with tf.Session() as sess:
 
     print("total model building time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches))
     
-    policy_list = ["fifo", "dnn"]
-    policy = dict(zip(policy_list,[policy_fifo(), policy_dnn()]))
 
     # next part is validation
     ts = time.time()    
-    simulation()
+    simulation(conf)
     print("validation time = %.2f seconds"% (time.time()-ts))
     
 #generate LP-DP decomposition policy

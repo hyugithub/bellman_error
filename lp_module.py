@@ -3,14 +3,19 @@ import time
 from ortools.linear_solver import pywraplp
 import itertools
 
-def lp(cap_supply, cap_demand, return_dual = False):
+def lp(cap_supply, cap_demand, param, return_dual = False):
     #print(cap_supply.shape, cap_demand.shape)
     ts = time.time()
+    #loading parameters
+    num_product = param["num_product"]    
+    num_nights = param["num_nights"]    
+    product_resource_map = param["product_resource_map"]    
+    product_revenue = param["product_revenue"]    
+    product_null = param["product_null"]    
+
     solver = pywraplp.Solver('LinearExample',
                            pywraplp.Solver.GLOP_LINEAR_PROGRAMMING)
-    #variables are number of products sold
-    #tmp = cap_demand[0]
-    #print(type(tmp))
+    #variables are number of products sold    
     x = [solver.NumVar(0.0, 1.0*cap_demand[p], "".join(["x",str(p)]))
     #x = [solver.NumVar(0.0, 10, "".join(["x",str(p)])) 
             for p in range(num_product)]
