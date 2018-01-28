@@ -17,9 +17,9 @@ def single_resource_dp(num_product, num_steps, cap, product_prob, adj_revenue):
     
     #temporary inputs
     num_product = 28
-    #num_steps = 128900
-    num_steps = 3
-    cap = 10
+    num_steps = 128900
+    #num_steps = 1289
+    cap = 100
     product_prob = np.asarray([9.9000e-01, 6.0436e-05, 5.9443e-04, 6.6212e-04, 1.1665e-04,
        7.8424e-05, 2.1006e-04, 2.3389e-05, 6.4966e-04, 4.6338e-04,
        7.2199e-04, 3.8423e-04, 2.9192e-04, 1.8903e-04, 4.6666e-04,
@@ -32,6 +32,9 @@ def single_resource_dp(num_product, num_steps, cap, product_prob, adj_revenue):
        383.2951, 400.3607, 942.6527, 929.9179, 948.3751, 375.4859,
        342.2961, 664.7771,  42.3206, 232.2399])
     
+    resource = np.ones(num_product)
+    resource[0] = 0
+    
     # according to RM literature, tstep = 0 means no time left    
     
     ts = time.time()
@@ -40,23 +43,28 @@ def single_resource_dp(num_product, num_steps, cap, product_prob, adj_revenue):
     #boundary conditions
     V_tm1 = np.full(cap+1, 0.0)        
     for tstep in range(1, num_steps):
+        #calculate backward induction:
+        #V(x,t) = sum [Pr(p)*max(price(p)+V(x-a(p),t-1), V(x,t-1))]
         if 1:    
-            #V_tm1[x-1]
-            lhs = V_tm1[1:]
-            #V_tm1[x] for x >= 1
-            rhs = V_tm1[:-1]
+            #x-
+            x = np.reshape(np.repeat(range(0,cap+1), num_product), (-1, num_product))
+            x = x - resource
             
-            #expand LHS for every product p
-            lhs = np.reshape(np.repeat(lhs,num_product), (lhs.shape[0],num_product))
-            lhs = lhs + adj_revenue
+            #note: before flatten it is inv level x product
+            y = np.maximum(x,0).astype(int).flatten()
             
-            #max(V1,V2) for every product
-            rev = np.maximum(lhs, np.reshape(rhs, (rhs.shape[0],-1)))
-            print(rev)
+            lhs = np.reshape(V_tm1[y], (cap+1, num_product)) + adj_revenue
+            flag = (x>=0.0).astype(int)
+            lhs = np.multiply(lhs,flag)
+            # if flag = 0, V(x-a(p)) is invalid and the max(a,b)
+            # is invalid too. 
+            rhs = V_tm1
+            rev = np.maximum(lhs, np.reshape(rhs, (rhs.shape[0],-1)))        
+            #print(rev)
             
             #expectation over all products
             V_t = np.sum(np.multiply(rev, np.reshape(product_prob, (-1,num_product))), axis=1)
-            V_tm1 = np.concatenate([np.zeros(1),V_t])
+            V_tm1 = V_t
             #print(V_tm1.shape)
         else:    
             V_t = np.full(cap+1, 0.0)        
@@ -68,7 +76,7 @@ def single_resource_dp(num_product, num_steps, cap, product_prob, adj_revenue):
                 #print(np.dot(product_prob, rev))
                 V_t[x] = np.dot(product_prob, rev)
             V_tm1 = V_t
-        print(V_tm1)
+        #print(V_tm1)
         result[tstep] = V_tm1
 
     print("min = %.2f"%np.amin(V_tm1)
