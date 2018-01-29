@@ -85,7 +85,7 @@ def param_init(param):
     #V(s,t)
     #try neural network model: input->hidden->output
     
-    num_batches_training = 11
+    num_batches_training = 200
     param["num_batches_training"] = num_batches_training
     
     #policy_list = ["fifo", "dnn"]

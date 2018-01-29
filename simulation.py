@@ -63,6 +63,52 @@ class policy_lpdp():
                 flag2[b] = 1.0
         return np.logical_and(flag, flag2)
     #EOC    
+
+class policy_lp_bound():                  
+    def do(self, s, r, p, tstep, param):
+        batch_size = param["batch_size"]
+        product_null = param["product_null"]
+        product_prob = param["product_prob"]
+        capacity = param["capacity"]
+        num_steps = param["num_steps"]
+        model = param["model"]
+        sess = param["sess"]
+        product_revenue = param["product_revenue"]
+        
+        # check resource
+        #print(s.shape, p.shape)
+        flag = (1.0-np.any((s-r)<0, axis=1)).astype(int)
+
+        #batch preparation -- avoid LP if possible
+        lpb_lhs = np.ones(batch_size)
+        lpb_rhs = np.ones(batch_size)
+        for b, avail, prod in zip(range(batch_size),flag,p):
+            if avail <= 1e-6 or prod == product_null:
+                continue
+            #otherwise it is not a null product and there is avail
+            # so we must calculate Vs
+            #please note that, because of the structure of our design
+            #we have to generate lp bounds for all products, not only
+            #the product currently being asssessed            
+            
+            lpb_lhs[b] = lp(s[b].astype(np.float32)
+                        , (tstep*product_prob).astype(np.float32)
+                        , param
+                        )
+            
+            lpb_rhs[b] = lp((s[b]-r[b]).astype(np.float32)
+                        , (tstep*product_prob).astype(np.float32)
+                        , param
+                        )                  
+        #print(p.shape)
+        bid_price = np.reshape(np.array([product_revenue[pp] for pp in p]), [batch_size,1])
+        
+        bid_price_delta = bid_price - np.reshape((lpb_lhs - lpb_rhs), (batch_size,-1))
+        avail = (bid_price_delta >= 0.0).astype(int).flatten()
+        
+        #print(avail.shape, flag.shape)        
+        return np.multiply(avail, flag)
+    #EOC    
     
 class policy_dnn():      
     def do(self, s, r, p, tstep, param):
@@ -158,7 +204,8 @@ def simulation(param):
     
     
     #policy_list = param["policy_list"]
-    policy_list = ["fifo", "dnn", "lpdp"]
+    #policy_list = ["fifo", "dnn", "lpdp", "lp_bound"]
+    policy_list = ["fifo", "dnn"]
     
     #policy = dict(zip(policy_list,[policy_fifo(), policy_dnn()]))
     
@@ -171,12 +218,14 @@ def simulation(param):
         if p == "lpdp":
             #policy[p] = policy_fifo()
             policy[p] = policy_lpdp(param)            
+        if p == "lp_bound":
+            policy[p] = policy_lp_bound()
         
     np.random.seed(seed_simulation)
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
     
-    for _ in range(1):
+    for _ in range(5):
         revenue = dict(zip(policy_list, [np.zeros(batch_size)]*len(policy_list)))
         #revenue["fifo"] = np.zeros(batch_size)
         #revenue["dnn"]  = np.zeros(batch_size)
@@ -199,7 +248,14 @@ def simulation(param):
                 revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
                 revenue[pol] = revenue[pol] + revenue0
                 state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
-        for r1,r2,r3 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"]):
-            print("dnn lift = %.2f"%(r2/r1-1.0)
-                , "lpdp lift = %.2f"%(r3/r1-1.0)
-                )                
+        #for r1,r2,r3,r4 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"], revenue["lp_bound"]):
+#            print("dnn lift = %.2f"%(r2/r1-1.0)
+#                , "lp bound lift = %.2f"%(r4/r1-1.0)
+#                , "lpdp lift = %.2f"%(r3/r1-1.0)
+#                )      
+        
+        for r1,r2,in zip(revenue["fifo"], revenue["dnn"]):
+            print("dnn lift = %.2f"%(r2/r1-1.0))
+        
+        for pol in policy_list:
+            print("policy ", pol, " revenue = {:,}".format(np.mean(revenue[pol])))
