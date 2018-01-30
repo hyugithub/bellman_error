@@ -156,6 +156,7 @@ with tf.Session() as sess:
 #                    , lp_bound_rhs_1
 #                    , lp_bound_rhs_2)            
             print("\n")
+            sys.stdout.flush() 
             
     save_path = saver.save(sess, fname_output_model) 
 
