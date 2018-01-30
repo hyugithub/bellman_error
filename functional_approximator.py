@@ -10,7 +10,6 @@ import time
 import itertools
 from lp_module import lp
 from simulation import simulation
-
 import config
 
 class error_model_simple_nn:
