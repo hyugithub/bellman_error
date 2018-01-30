@@ -488,16 +488,20 @@ def generate_batch_t0():
 #build a class for stratified sampling
 class sample_generation:    
     def __init__(self, param):    
+        self.param = param
+        self.build()
+        
+    def build(self):
         #param = conf
-        batch_size = param["batch_size"]
-        num_product = param["num_product"]
-        num_steps = param["num_steps"]
-        product_prob = param["product_prob"]
-        num_nights = param["num_nights"]
-        capacity = param["capacity"]
-        product_resource_map = param["product_resource_map"]
-        product_revenue = param["product_revenue"]
-        batch_size = param["batch_size"]
+        batch_size = self.param["batch_size"]
+        #num_product = param["num_product"]
+        num_steps = self.param["num_steps"]
+        product_prob = self.param["product_prob"]
+        num_nights = self.param["num_nights"]
+        capacity = self.param["capacity"]
+        product_resource_map = self.param["product_resource_map"]
+        product_revenue = self.param["product_revenue"]
+        batch_size = self.param["batch_size"]
             
         #generate demand for all tsteps
         demand = np.random.choice(range(num_product)
@@ -519,15 +523,14 @@ class sample_generation:
         np.random.shuffle(self.order)
         
     def next(self):
+        if self.tstep >= self.num_steps:
+            self.build()
         tstep = self.order[self.tstep]
         self.tstep += 1
         # what if we run out of sample? just shuffle again
         # and start over
         #TODO: we can probably do better here
-        if self.tstep >= self.num_steps:
-            np.random.shuffle(self.order)
-            self.tstep = 0
-        return self.result[tstep], np.full([batch_size,1], tstep)
+        return self.result[tstep], np.full([batch_size,1], tstep)    
 
 #general initialization
 ts = time.time()
@@ -707,7 +710,7 @@ with tf.Session() as sess:
 
     # next part is validation
     ts = time.time()    
-    if 1:
+    if 0:
         simulation(conf)
     print("simulation validation time = %.2f seconds"% (time.time()-ts))
     
