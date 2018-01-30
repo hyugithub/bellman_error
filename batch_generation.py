@@ -139,12 +139,17 @@ def batch_data_load():
     print(lp_bound_lhs.shape)
     print(lp_bound_rhs_1.shape)
     print(lp_bound_rhs_2.shape)
+    
+    return data_lhs, data_rhs_1, data_rhs_2 , data_mask, \
+        lp_bound_lhs , lp_bound_rhs_1 , lp_bound_rhs_2
     #EOF
 
-if __name__ == '__main__':
-    __spec__ = None
-    ts = time.time()
-    batch_data_prep()
-    print("total batch data preparation time = %.2f"%(time.time()-ts))
-    batch_data_load()
+# sample for writing and reading
+#if __name__ == '__main__':
+#    for spyder    
+#    __spec__ = None
+#    ts = time.time()
+#    batch_data_prep()
+#    print("total batch data preparation time = %.2f"%(time.time()-ts))
+#    batch_data_load()
     

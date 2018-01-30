@@ -115,8 +115,7 @@ def param_init(param):
     param["init_level_output"] = init_level_output
     
     num_batches_training = 40
-    param["num_batches_training"] = num_batches_training    
-    
+    param["num_batches_training"] = num_batches_training            
     
     save_param(param)
     
