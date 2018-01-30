@@ -49,8 +49,8 @@ def lpdp(param):
                                         , product_resource_map[:,night]
                                         , conf)
                         for night in range(num_nights)])
-    fname_policy = param["fname_policy"] 
-    np.save(fname_policy, result)
+    fname_policy_output = param["fname_policy_output"] 
+    np.save(fname_policy_output, result)
 #    for night in range(num_nights):
 #        print("solve DP for night", night)
 #        adj_rev = adj_revenue[:,night]

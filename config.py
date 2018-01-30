@@ -36,8 +36,13 @@ def param_init(param):
     fname_output_model = "".join([model_path, "dpdnn.",timestamp, ".ckpt"])
     param["fname_output_model"] = fname_output_model
     
-    fname_policy = "".join([model_path, "lpdp_value_function.", timestamp, ".npy"])
-    param["fname_policy"] = fname_policy    
+    #used to read policy file
+    fname_policy = "".join([model_path, "lpdp_value_function.npy"])
+    param["fname_policy"] = fname_policy        
+    
+    #used to WRITE policy file by lpdp.py
+    fname_policy_output = "".join([model_path, "lpdp_value_function.", timestamp, ".npy"])
+    param["fname_policy_output"] = fname_policy_output    
     
     fname_json = "".join([model_path, "config.", timestamp, ".json"])
     param["fname_json"] = fname_json    
