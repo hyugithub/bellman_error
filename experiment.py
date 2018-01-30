@@ -135,7 +135,10 @@ with tf.Session() as sess:
                     , lp_bound_rhs_2)
         # statistics accumulation
         if 1 and batch % 10 == 0:              
-            print("batch = ", batch)
+            print("batch = ", batch, " validation")
+            if 1:
+                #get a different batch and sample again
+                data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(conf, sg)
             model.read_loss(sess
                     , data_lhs
                     , data_rhs_1
@@ -144,14 +147,14 @@ with tf.Session() as sess:
                     , lp_bound_lhs
                     , lp_bound_rhs_1
                     , lp_bound_rhs_2)
-            model.read_gradients(sess
-                    , data_lhs
-                    , data_rhs_1
-                    , data_rhs_2
-                    , data_mask
-                    , lp_bound_lhs
-                    , lp_bound_rhs_1
-                    , lp_bound_rhs_2)            
+#            model.read_gradients(sess
+#                    , data_lhs
+#                    , data_rhs_1
+#                    , data_rhs_2
+#                    , data_mask
+#                    , lp_bound_lhs
+#                    , lp_bound_rhs_1
+#                    , lp_bound_rhs_2)            
             print("\n")
             
     save_path = saver.save(sess, fname_output_model) 

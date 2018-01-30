@@ -93,7 +93,7 @@ def param_init(param):
     #computational graph parameters
     
     #define a state (in batch) and a linear value function
-    batch_size = 16
+    batch_size = 64
     param["batch_size"] = batch_size
     #LHS is the value function for current state at time t
     #for each state, we need num_nights real value inputs for available
@@ -101,11 +101,18 @@ def param_init(param):
     dim_state_space = num_nights+1
     param["dim_state_space"] = dim_state_space
     
+    #hidden layer size
     hidden = 64
     param["hidden"] = hidden
     
     num_hidden_layer = 5
     param["num_hidden_layer"] = num_hidden_layer
+    
+    #weights initialzation parameters
+    init_level = 1.0
+    param["init_level"] = init_level
+    init_level_output = 1.0
+    param["init_level_output"] = init_level_output
     
     num_batches_training = 40
     param["num_batches_training"] = num_batches_training    

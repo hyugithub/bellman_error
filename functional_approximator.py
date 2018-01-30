@@ -26,6 +26,10 @@ class error_model_simple_nn:
         self.product_revenue = param["product_revenue"]
         self.product_prob = param["product_prob"]
         num_hidden_layer = param["num_hidden_layer"]
+        #roughly speaking, we need to initialize 
+        self.init_level = param["init_level"]
+        self.init_level_output = param["init_level_output"]
+        
         
         self.state_lhs = tf.placeholder(tf.float32, [self.batch_size, self.dim_state_space])
         #V(s-a(p),t-1)
@@ -38,11 +42,7 @@ class error_model_simple_nn:
             self.lp_bound_lhs = tf.placeholder(tf.float32, [self.batch_size])
             self.lp_bound_rhs_1 = tf.placeholder(tf.float32, [self.batch_size, self.num_product])
             self.lp_bound_rhs_2 = tf.placeholder(tf.float32, [self.batch_size])       
-       
-        #roughly speaking, we need to initialize 
-        self.init_level = 1.0
-        self.init_level_output = 1.0
-        
+               
         self.value_lhs = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_1 = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_2 = tf.constant(0.0, dtype=tf.float32)
@@ -70,6 +70,8 @@ class error_model_simple_nn:
                                         , dtype=tf.float32
                                         , name="bias_output"
                                         )
+        
+        # we just realize that we no longer need boundary conditions
         self.lambda_s0 = 0.0
         self.lambda_t0 = 0.0
         
@@ -94,10 +96,10 @@ class error_model_simple_nn:
                     for din,dout in zip(hidden_units, hidden_units[1:])]
 
     def build(self):
-        self.loss = self.generate_bellman_error_deep() \
-                        + self.generate_boundary_error_deep()
 #        self.loss = self.generate_bellman_error_deep() \
-#                        + tf.multiply(tf.constant(0.0, dtype=tf.float32), self.generate_boundary_error_deep())
+#                        + self.generate_boundary_error_deep()
+        self.loss = self.generate_bellman_error_deep() \
+                        + tf.multiply(tf.constant(0.0, dtype=tf.float32), self.generate_boundary_error_deep())
         self.train_step =tf.train.AdagradOptimizer(0.1).minimize(self.loss)
         self.gradients = tf.gradients(self.loss, tf.trainable_variables())
 
@@ -122,7 +124,7 @@ class error_model_simple_nn:
         #V(s,t)        
         V_s_t = self.build_network(self.state_lhs, weights, biases)
         if self.debug_lp:
-            print(V_s_t, self.lp_bound_lhs)
+            #print(V_s_t, self.lp_bound_lhs)
             V_s_t = tf.multiply(V_s_t, tf.reshape(self.lp_bound_lhs, [self.batch_size, -1]))
         #V(s,t-1) 
         V_s_tm1 = self.build_network(self.state_rhs_2, weights, biases)
