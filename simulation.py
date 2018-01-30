@@ -204,8 +204,8 @@ def simulation(param):
     
     
     #policy_list = param["policy_list"]
-    #policy_list = ["fifo", "dnn", "lpdp", "lp_bound"]
-    policy_list = ["fifo", "dnn"]
+    policy_list = ["fifo", "dnn", "lpdp", "lp_bound"]
+    #policy_list = ["fifo", "dnn"]
     
     #policy = dict(zip(policy_list,[policy_fifo(), policy_dnn()]))
     

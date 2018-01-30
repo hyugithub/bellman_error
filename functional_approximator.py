@@ -328,9 +328,12 @@ class error_model_simple_nn:
     #EOC
 
 #generate a batch of data for training and/or validation
-def generate_batch():
-    data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
-    time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                                       
+def generate_batch(sample_generator = None):
+    if sample_generator == None:
+        data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
+        time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                                       
+    else:
+        data_lhs_0, time_lhs = sample_generator.next()
     
     lpb_lhs = np.ones(batch_size)
     lpb_rhs2 = np.ones(batch_size)
@@ -482,6 +485,50 @@ def generate_batch_t0():
     return lhs, rhs1, rhs2, mask, lpb_lhs, lpb_rhs1, lpb_rhs2
     #EOF     
       
+#build a class for stratified sampling
+class sample_generation:    
+    def __init__(self, param):    
+        #param = conf
+        batch_size = param["batch_size"]
+        num_product = param["num_product"]
+        num_steps = param["num_steps"]
+        product_prob = param["product_prob"]
+        num_nights = param["num_nights"]
+        capacity = param["capacity"]
+        product_resource_map = param["product_resource_map"]
+        product_revenue = param["product_revenue"]
+        batch_size = param["batch_size"]
+            
+        #generate demand for all tsteps
+        demand = np.random.choice(range(num_product)
+                                        , size=(num_steps, batch_size)
+                                        , p=product_prob
+                                     )    
+        self.result = np.zeros([num_steps, batch_size, num_nights])
+        # initial state
+        state = np.ones([batch_size, num_nights])*capacity        
+        for tstep in range(num_steps):              
+            resource = np.stack([product_resource_map[p] for p in demand[tstep]])
+            #admit = np.ones((batch_size, 1))
+            admit = 1-np.any((state-resource)<-1e-6, axis=1).astype(int)
+            state = state - np.multiply(resource, np.reshape(admit, [batch_size,1]))
+            self.result[tstep] = state
+        self.tstep = 0
+        self.num_steps = num_steps
+        self.order = np.arange(num_steps)
+        np.random.shuffle(self.order)
+        
+    def next(self):
+        tstep = self.order[self.tstep]
+        self.tstep += 1
+        # what if we run out of sample? just shuffle again
+        # and start over
+        #TODO: we can probably do better here
+        if self.tstep >= self.num_steps:
+            np.random.shuffle(self.order)
+            self.tstep = 0
+        return self.result[tstep], np.full([batch_size,1], tstep)
+
 #general initialization
 ts = time.time()
 ops.reset_default_graph()
@@ -548,7 +595,7 @@ model.build()
 conf["model"] = model
 
 num_batches_training = conf["num_batches_training"] 
-
+sg = sample_generation(conf)
 first_run = True
 
 saver = tf.train.Saver()
@@ -560,7 +607,7 @@ with tf.Session() as sess:
     for batch in range(num_batches_training):
         #generate data for LHS V(s,t)
         
-        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch()
+        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(sg)
         
         if first_run:
             first_run = False
@@ -629,7 +676,7 @@ with tf.Session() as sess:
     print("validation for random samples:")    
     for vb in range(1):
         print("validation batch ", vb)
-        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch()
+        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(sg)
         model.read_loss(sess
                     , data_lhs
                     , data_rhs_1
@@ -660,24 +707,7 @@ with tf.Session() as sess:
 
     # next part is validation
     ts = time.time()    
-    simulation(conf)
+    if 1:
+        simulation(conf)
     print("simulation validation time = %.2f seconds"% (time.time()-ts))
     
-#generate LP-DP decomposition policy
-# we may need to save data in file and read
-# during simulation in trunk    
-def lpdp(param):
-    #do a lp and use dual to do dp for each night
-    num_nights = param["num_nights"]
-    capacity = param["capacity"]
-    product_demand = param["product_demand"]
-    _, dual = lp(np.full(num_nights, capacity)
-                , product_demand
-                , conf
-                , True)
-    print(dual)
-    
-    for night in range(num_nights):
-        print("solve DP for night", night)
-    
-    return 1.0
