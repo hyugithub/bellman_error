@@ -90,7 +90,7 @@ def param_init(param):
     product_prob[0] = 1.0 - np.sum(product_prob)
     param["product_prob"] = product_prob
     
-    #computational graph generation
+    #computational graph parameters
     
     #define a state (in batch) and a linear value function
     batch_size = 16
@@ -101,12 +101,15 @@ def param_init(param):
     dim_state_space = num_nights+1
     param["dim_state_space"] = dim_state_space
     
-    #tensorflow model inputs (or really state space samples)
-    #V(s,t)
-    #try neural network model: input->hidden->output
+    hidden = 64
+    param["hidden"] = hidden
     
-    num_batches_training = 200
+    num_hidden_layer = 5
+    param["num_hidden_layer"] = num_hidden_layer
+    
+    num_batches_training = 40
     param["num_batches_training"] = num_batches_training    
+    
     
     save_param(param)
     

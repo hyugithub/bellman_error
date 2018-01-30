@@ -14,23 +14,31 @@ from simulation import simulation
 import config
 
 class error_model_simple_nn:
-    def __init__(self):
+    def __init__(self, param):
         #inputs
-        self.state_lhs = tf.placeholder(tf.float32, [batch_size, dim_state_space])
+        
+        self.batch_size = param["batch_size"]
+        self.num_nights = param["num_nights"]
+        self.dim_state_space = param["dim_state_space"]
+        self.num_product = param["num_product"]
+        self.debug_lp = param["debug_lp"]
+        self.hidden = param["hidden"]
+        self.product_revenue = param["product_revenue"]
+        self.product_prob = param["product_prob"]
+        num_hidden_layer = param["num_hidden_layer"]
+        
+        self.state_lhs = tf.placeholder(tf.float32, [self.batch_size, self.dim_state_space])
         #V(s-a(p),t-1)
-        self.state_rhs_1 = tf.placeholder(tf.float32, [batch_size, num_product, dim_state_space])
+        self.state_rhs_1 = tf.placeholder(tf.float32, [self.batch_size, self.num_product, self.dim_state_space])
         #V(s,t-1)
-        self.state_rhs_2 = tf.placeholder(tf.float32, [batch_size, dim_state_space])
-        self.mask = tf.placeholder(tf.float32, [batch_size, num_product])                
+        self.state_rhs_2 = tf.placeholder(tf.float32, [self.batch_size, self.dim_state_space])
+        self.mask = tf.placeholder(tf.float32, [self.batch_size, self.num_product])                
         
-        if debug_lp:
-            self.lp_bound_lhs = tf.placeholder(tf.float32, [batch_size])
-            self.lp_bound_rhs_1 = tf.placeholder(tf.float32, [batch_size, num_product])
-            self.lp_bound_rhs_2 = tf.placeholder(tf.float32, [batch_size])       
-
-        # size of network        
-        self.hidden = 64
-        
+        if self.debug_lp:
+            self.lp_bound_lhs = tf.placeholder(tf.float32, [self.batch_size])
+            self.lp_bound_rhs_1 = tf.placeholder(tf.float32, [self.batch_size, self.num_product])
+            self.lp_bound_rhs_2 = tf.placeholder(tf.float32, [self.batch_size])       
+       
         #roughly speaking, we need to initialize 
         self.init_level = 1.0
         self.init_level_output = 1.0
@@ -38,7 +46,7 @@ class error_model_simple_nn:
         self.value_lhs = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_1 = tf.constant(0.0, dtype=tf.float32)
         self.value_rhs_2 = tf.constant(0.0, dtype=tf.float32)
-        self.weight_input = tf.Variable(self.init_level*np.random.normal(size=[dim_state_space, self.hidden])
+        self.weight_input = tf.Variable(self.init_level*np.random.normal(size=[self.dim_state_space, self.hidden])
                                         , dtype=tf.float32
                                         , name="weight_input"
                                         )
@@ -62,10 +70,10 @@ class error_model_simple_nn:
                                         , dtype=tf.float32
                                         , name="bias_output"
                                         )
-        self.lambda_s0 = 1.0
-        self.lambda_t0 = 1.0
+        self.lambda_s0 = 0.0
+        self.lambda_t0 = 0.0
         
-        num_hidden_layer = 5
+        
 
         # determine each layer
         # 0 -- sigmoid
@@ -113,17 +121,17 @@ class error_model_simple_nn:
         biases = [self.bias_input] + self.bias_hidden + [self.bias_output]        
         #V(s,t)        
         V_s_t = self.build_network(self.state_lhs, weights, biases)
-        if debug_lp:
+        if self.debug_lp:
             print(V_s_t, self.lp_bound_lhs)
-            V_s_t = tf.multiply(V_s_t, tf.reshape(self.lp_bound_lhs, [batch_size, -1]))
+            V_s_t = tf.multiply(V_s_t, tf.reshape(self.lp_bound_lhs, [self.batch_size, -1]))
         #V(s,t-1) 
         V_s_tm1 = self.build_network(self.state_rhs_2, weights, biases)
-        if debug_lp:
-            V_s_tm1 = tf.multiply(V_s_tm1, tf.reshape(self.lp_bound_rhs_2, [batch_size, -1]))
+        if self.debug_lp:
+            V_s_tm1 = tf.multiply(V_s_tm1, tf.reshape(self.lp_bound_rhs_2, [self.batch_size, -1]))
         #V(s-a(p),t-1)
-        V_s1_tm1 = self.build_network(tf.reshape(self.state_rhs_1,[-1, dim_state_space]), weights, biases)
-        V_s1_tm1 = tf.reshape(V_s1_tm1, [batch_size,-1])   
-        if debug_lp:            
+        V_s1_tm1 = self.build_network(tf.reshape(self.state_rhs_1,[-1, self.dim_state_space]), weights, biases)
+        V_s1_tm1 = tf.reshape(V_s1_tm1, [self.batch_size,-1])   
+        if self.debug_lp:            
             V_s1_tm1 = tf.multiply(V_s1_tm1, self.lp_bound_rhs_1)
 #            print(V_s_t)
 #            print(V_s_tm1)
@@ -134,17 +142,17 @@ class error_model_simple_nn:
         value_rhs_2 = V_s_tm1
         
         #V(s-a(p),t-1) - V(s,t-1) + r(p)
-        value_rhs_1 = V_s1_tm1 - tf.reshape(V_s_tm1, [batch_size,-1]) + tf.constant(product_revenue, dtype=tf.float32)
+        value_rhs_1 = V_s1_tm1 - tf.reshape(V_s_tm1, [self.batch_size,-1]) + tf.constant(self.product_revenue, dtype=tf.float32)
         # max(,0)
         value_rhs_1 = tf.maximum(value_rhs_1, tf.constant(0.0))
         # mask unsellable product
         value_rhs_1 = tf.multiply(value_rhs_1, self.mask)
         # multiply by probability
         value_rhs_1 = tf.multiply(value_rhs_1
-                                , tf.constant(product_prob
+                                , tf.constant(self.product_prob
                                               , dtype=tf.float32))        
         # sum
-        value_rhs_1 = tf.reshape(tf.reduce_sum(value_rhs_1, axis=1), [batch_size,-1])        
+        value_rhs_1 = tf.reshape(tf.reduce_sum(value_rhs_1, axis=1), [self.batch_size,-1])        
         value_rhs = value_rhs_1 + value_rhs_2        
         #print(value_rhs)
         
@@ -160,7 +168,7 @@ class error_model_simple_nn:
     def generate_boundary_error_deep(self): 
         #V(s,0) = 0
         
-        mask_t0 = tf.reshape(tf.constant(np.concatenate([np.ones(num_nights), np.zeros(1)]), dtype=tf.float32), [dim_state_space, -1])
+        mask_t0 = tf.reshape(tf.constant(np.concatenate([np.ones(self.num_nights), np.zeros(1)]), dtype=tf.float32), [self.dim_state_space, -1])
         weights_t0 = tf.multiply(self.weight_input, mask_t0)                 
         weights = [weights_t0] + self.weight_hidden + [self.weight_output]
         biases = [self.bias_input] + self.bias_hidden + [self.bias_output]                
@@ -168,7 +176,7 @@ class error_model_simple_nn:
         v_t0 = self.build_network(self.state_lhs, weights, biases)
         boundary_t0 = tf.multiply(tf.reduce_mean(tf.multiply(v_t0,v_t0)), tf.constant(self.lambda_t0, dtype=tf.float32))
         
-        mask_s0 = tf.reshape(tf.constant(np.concatenate([np.zeros(num_nights), np.ones(1)]), dtype=tf.float32), [dim_state_space, -1])
+        mask_s0 = tf.reshape(tf.constant(np.concatenate([np.zeros(self.num_nights), np.ones(1)]), dtype=tf.float32), [self.dim_state_space, -1])
         weights_s0 = tf.multiply(self.weight_input, mask_s0)
         weights = [weights_s0] + self.weight_hidden + [self.weight_output]        
         #V(s=0,t)
@@ -187,7 +195,7 @@ class error_model_simple_nn:
               , lp_bound_rhs_1 = None
               , lp_bound_rhs_2 = None
               ):
-        if debug_lp:
+        if self.debug_lp:
             session.run(self.train_step
                     , feed_dict={self.state_lhs: data_lhs
                                  , self.state_rhs_1: data_rhs_1
@@ -224,7 +232,7 @@ class error_model_simple_nn:
                   , lp_bound_rhs_1 = None
                   , lp_bound_rhs_2 = None                  
                   ):
-        if debug_lp:
+        if self.debug_lp:
             result_loss, result_bellman, result_boundary, result_value = session.run(
                 [self.loss, self.bellman_error, self.boundary_error, self.value_lhs]
                 , feed_dict={self.state_lhs: data_lhs
@@ -259,7 +267,7 @@ class error_model_simple_nn:
         #all we need to do is to refer to objects we created
         # and are interested
         param = tf.trainable_variables()
-        if debug_lp:
+        if self.debug_lp:
             result = session.run(
                 [self.gradients] + param
                 , feed_dict={self.state_lhs: data_lhs
@@ -302,7 +310,7 @@ class error_model_simple_nn:
         #read we have set up the network and it is running
         #all we need to do is to refer to objects we created
         # and are interested
-        if debug_lp:
+        if self.debug_lp:
             w_input, b_input, w_output, b_output, w_hidden, b_hidden = session.run(
                 [self.weight_input, self.bias_input, self.weight_output, self.bias_output, self.weight_hidden, self.bias_hidden]
                 , feed_dict={self.state_lhs: data_lhs
@@ -328,7 +336,17 @@ class error_model_simple_nn:
     #EOC
 
 #generate a batch of data for training and/or validation
-def generate_batch(sample_generator = None):
+def generate_batch(param, sample_generator = None):
+    batch_size = param["batch_size"]
+    num_product = param["num_product"]
+    num_steps = param["num_steps"]
+    product_prob = param["product_prob"]
+    num_nights = param["num_nights"]
+    capacity = param["capacity"]
+    product_resource_map = param["product_resource_map"]
+    product_revenue = param["product_revenue"]
+    debug_lp = param["debug_lp"]      
+    
     if sample_generator == None:
         data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
         time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                                       
@@ -342,7 +360,7 @@ def generate_batch(sample_generator = None):
     if debug_lp:
         lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32)
                                 , (time_lhs[b]*product_prob).astype(np.float32)
-                                , conf) for b in range(batch_size)])
+                                , param) for b in range(batch_size)])
     
     #generate data for V(s-a(p),t-1)
     #batch x product x night(state)
@@ -358,14 +376,14 @@ def generate_batch(sample_generator = None):
     if debug_lp:            
         lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32)
                                 , (time_rhs[b]*product_prob).astype(np.float32)
-                                , conf
+                                , param
                                 ) for b in range(batch_size)])
     time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
 
     if debug_lp:
         lpb_rhs1 = [ lp(rhs1[b][p]
                         , time_rhs[b][p]*product_prob
-                        , conf
+                        , param
                         ) for b,p in itertools.product(range(batch_size), range(num_product)) ]                
         lpb_rhs1 = np.reshape(lpb_rhs1, [batch_size,-1])
     
@@ -379,7 +397,16 @@ def generate_batch(sample_generator = None):
     #EOF 
     
 #generate validation data batch with fix time
-def generate_batch_fix_time():
+def generate_batch_fix_time(param):
+    batch_size = param["batch_size"]
+    num_product = param["num_product"]
+    num_steps = param["num_steps"]
+    product_prob = param["product_prob"]
+    num_nights = param["num_nights"]
+    capacity = param["capacity"]
+    product_resource_map = param["product_resource_map"]
+    product_revenue = param["product_revenue"]
+    debug_lp = param["debug_lp"]      
     #generate monotonic state sequence
     booking = np.random.choice(range(0,2), [batch_size, num_nights])
     for k in range(1, batch_size):
@@ -397,7 +424,7 @@ def generate_batch_fix_time():
     if debug_lp:
         lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32)
                             , (time_lhs[b]*product_prob).astype(np.float32)
-                            , conf
+                            , param
                             ) for b in range(batch_size)])
     
     #generate data for V(s-a(p),t-1)
@@ -414,14 +441,14 @@ def generate_batch_fix_time():
     if debug_lp:            
         lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32)
                                 , (time_rhs[b]*product_prob).astype(np.float32)
-                                , conf
+                                , param
                                 ) for b in range(batch_size)])
     time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
 
     if debug_lp:
         lpb_rhs1 = [ lp(rhs1[b][p]
                         , time_rhs[b][p]*product_prob
-                        , conf
+                        , param
                         ) for b,p in itertools.product(range(batch_size), range(num_product)) ]                
         lpb_rhs1 = np.reshape(lpb_rhs1, [batch_size,-1])
     
@@ -436,7 +463,16 @@ def generate_batch_fix_time():
     
 #generate validation batch data for monotonicity checking 
 # with constant state
-def generate_batch_t0():    
+def generate_batch_t0(param):  
+    batch_size = param["batch_size"]
+    num_product = param["num_product"]
+    num_steps = param["num_steps"]
+    product_prob = param["product_prob"]
+    num_nights = param["num_nights"]
+    capacity = param["capacity"]
+    product_resource_map = param["product_resource_map"]
+    product_revenue = param["product_revenue"]
+    debug_lp = param["debug_lp"]      
     #generate one state
     data_lhs_0 = np.random.choice(capacity+1, [num_nights])
     #and fix it
@@ -451,7 +487,7 @@ def generate_batch_t0():
     if debug_lp:
         lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32)
                                 , (time_lhs[b]*product_prob).astype(np.float32)
-                                , conf
+                                , param
                                 ) for b in range(batch_size)])    
     
     #generate data for V(s-a(p),t-1)
@@ -468,12 +504,12 @@ def generate_batch_t0():
     if debug_lp:            
         lpb_rhs2 = np.asarray([lp(data_lhs_0[b].astype(np.float32)
                                 , (time_rhs[b]*product_prob).astype(np.float32)
-                                , conf
+                                , param
                                 ) for b in range(batch_size)])
     time_rhs = np.reshape(np.repeat(np.ravel(time_rhs),num_product), (batch_size,num_product,-1))                
 
     if debug_lp:
-        lpb_rhs1 = [ lp(rhs1[b][p], time_rhs[b][p]*product_prob, conf) 
+        lpb_rhs1 = [ lp(rhs1[b][p], time_rhs[b][p]*product_prob, param) 
                         for b,p in itertools.product(range(batch_size), range(num_product)) ]                
         lpb_rhs1 = np.reshape(lpb_rhs1, [batch_size,-1])
     
@@ -492,7 +528,7 @@ class sample_generation:
         self.build()
         
     def build(self):
-        #param = conf
+        #param = param
         batch_size = self.param["batch_size"]
         #num_product = param["num_product"]
         num_steps = self.param["num_steps"]
@@ -502,6 +538,7 @@ class sample_generation:
         product_resource_map = self.param["product_resource_map"]
         product_revenue = self.param["product_revenue"]
         batch_size = self.param["batch_size"]
+        num_product = self.param["num_product"]
             
         #generate demand for all tsteps
         demand = np.random.choice(range(num_product)
@@ -523,6 +560,7 @@ class sample_generation:
         np.random.shuffle(self.order)
         
     def next(self):
+        batch_size = self.param["batch_size"]
         if self.tstep >= self.num_steps:
             self.build()
         tstep = self.order[self.tstep]
@@ -531,186 +569,3 @@ class sample_generation:
         # and start over
         #TODO: we can probably do better here
         return self.result[tstep], np.full([batch_size,1], tstep)    
-
-#general initialization
-ts = time.time()
-ops.reset_default_graph()
-np.set_printoptions(precision=4)
-
-#all parameters
-conf = dict()
-config.param_init(conf)
-
-seed_training = conf["seed_training"]
-np.random.seed(seed_training)
-
-seed_simulation = conf["seed_simulation"]
-
-if sys.platform == "win32":
-    model_path = "C:/Users/hyu/Desktop/bellman/model/"
-elif sys.platform == "linux":
-    model_path = "/home/ubuntu/model/"
-else:
-    model_path = ""
-    
-fname_output_model = model_path+"dp.ckpt"
-
-debug_lp = conf["debug_lp"]
-
-#business parameter initialization
-num_nights = conf["num_nights"] 
-capacity = conf["capacity"]
-# product zero is the no-revenue no resource product
-# added for simplicity
-product_null = conf["product_null"]
-# unfortunately, to avoid confusion we need to add a fairly 
-# complex product matrix
-# if there are N nights, there are N one-night product from 
-# 1 to N; there are also N-1 two-night products from N+1 to 2N-1
-num_product = conf["num_product"]
-product_resource_map = conf["product_resource_map"] 
-product_revenue = conf["product_revenue"] 
-
-product_demand = conf["product_demand"] 
-
-num_steps = conf["num_steps"]
-
-#arrival rate (including)
-product_prob = conf["product_prob"] 
-
-#computational graph generation
-
-#define a state (in batch) and a linear value function
-batch_size = conf["batch_size"] 
-#LHS is the value function for current state at time t
-#for each state, we need num_nights real value inputs for available
-# inventory, and +1 for time
-dim_state_space = conf["dim_state_space"] 
-
-#tensorflow model inputs (or really state space samples)
-#V(s,t)
-#try neural network model: input->hidden->output
-
-#define linear approximation model
-#model = error_model_linear()
-model = error_model_simple_nn()
-model.build()
-conf["model"] = model
-
-num_batches_training = conf["num_batches_training"] 
-sg = sample_generation(conf)
-first_run = True
-
-saver = tf.train.Saver()
-   
-with tf.Session() as sess:    
-    conf["sess"] = sess
-    sess.run(tf.global_variables_initializer())    
-        
-    for batch in range(num_batches_training):
-        #generate data for LHS V(s,t)
-        
-        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(sg)
-        
-        if first_run:
-            first_run = False
-            print("Before even training, check parameters:")
-            model.read_loss(sess
-                    , data_lhs
-                    , data_rhs_1
-                    , data_rhs_2
-                    , data_mask
-                    , lp_bound_lhs
-                    , lp_bound_rhs_1
-                    , lp_bound_rhs_2)
-            model.read_param(sess
-                    , data_lhs
-                    , data_rhs_1
-                    , data_rhs_2
-                    , data_mask
-                    , lp_bound_lhs
-                    , lp_bound_rhs_1
-                    , lp_bound_rhs_2)
-            model.read_gradients(sess
-                    , data_lhs
-                    , data_rhs_1
-                    , data_rhs_2
-                    , data_mask
-                    , lp_bound_lhs
-                    , lp_bound_rhs_1
-                    , lp_bound_rhs_2)                        
-            print("Before even training, check parameters end\n")
-                
-        #we will have to run the session twice since tensorflow does
-        # not ensure all tasks are executed in a pre-determined order per
-        # https://github.com/tensorflow/tensorflow/issues/13133
-        # this is the training step
-        model.train(sess
-                    , data_lhs
-                    , data_rhs_1
-                    , data_rhs_2
-                    , data_mask
-                    , lp_bound_lhs
-                    , lp_bound_rhs_1
-                    , lp_bound_rhs_2)
-        # statistics accumulation
-        if 1 and batch % 10 == 0:              
-            print("batch = ", batch)
-            model.read_loss(sess
-                    , data_lhs
-                    , data_rhs_1
-                    , data_rhs_2
-                    , data_mask
-                    , lp_bound_lhs
-                    , lp_bound_rhs_1
-                    , lp_bound_rhs_2)
-            model.read_gradients(sess
-                    , data_lhs
-                    , data_rhs_1
-                    , data_rhs_2
-                    , data_mask
-                    , lp_bound_lhs
-                    , lp_bound_rhs_1
-                    , lp_bound_rhs_2)            
-            print("\n")
-            
-    save_path = saver.save(sess, fname_output_model) 
-
-    print("validation for random samples:")    
-    for vb in range(1):
-        print("validation batch ", vb)
-        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(sg)
-        model.read_loss(sess
-                    , data_lhs
-                    , data_rhs_1
-                    , data_rhs_2
-                    , data_mask
-                    , lp_bound_lhs
-                    , lp_bound_rhs_1
-                    , lp_bound_rhs_2)
-        
-    print("validation for monotonicity when state is fixed:")    
-    for vb in range(1):
-        print("validation batch ", vb)
-        #data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_t0()
-        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_fix_time()
-#        model.read_loss(sess
-#                    , data_lhs
-#                    , data_rhs_1
-#                    , data_rhs_2
-#                    , data_mask
-#                    , lp_bound_lhs
-#                    , lp_bound_rhs_1
-#                    , lp_bound_rhs_2)        
-        val = model.predict(sess, data_lhs, lp_bound_lhs)
-        print(val)
-
-    print("total model building time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches_training))
-    
-
-    # next part is validation
-    ts = time.time()    
-    if 0:
-        simulation(conf)
-    print("simulation validation time = %.2f seconds"% (time.time()-ts))
-    

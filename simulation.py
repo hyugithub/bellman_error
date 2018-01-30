@@ -193,17 +193,7 @@ def simulation(param):
     # we should use the same seed for both fifo and new policy 
     # to reduce variance
     #load parameters 
-    seed_simulation = param["seed_simulation"]
-    batch_size = param["batch_size"]
-    num_product = param["num_product"]
-    num_steps = param["num_steps"]
-    product_prob = param["product_prob"]
-    num_nights = param["num_nights"]
-    capacity = param["capacity"]
-    product_resource_map = param["product_resource_map"]
-    product_revenue = param["product_revenue"]
-    batch_size = param["batch_size"]
-    
+    seed_simulation = param["seed_simulation"]  
     
     #policy_list = param["policy_list"]
     policy_list = ["fifo", "dnn", "lpdp", "lp_bound"]
@@ -228,6 +218,15 @@ def simulation(param):
     #state_initial = np.ones([batch_size, num_nights])*capacity
     
     for _ in range(1):
+        batch_size = param["batch_size"]
+        num_product = param["num_product"]
+        num_steps = param["num_steps"]
+        product_prob = param["product_prob"]
+        num_nights = param["num_nights"]
+        capacity = param["capacity"]
+        product_resource_map = param["product_resource_map"]
+        product_revenue = param["product_revenue"]
+        
         revenue = dict(zip(policy_list, [np.zeros(batch_size)]*len(policy_list)))
         #revenue["fifo"] = np.zeros(batch_size)
         #revenue["dnn"]  = np.zeros(batch_size)
