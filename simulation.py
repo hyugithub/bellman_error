@@ -250,14 +250,14 @@ def simulation(param):
                 revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
                 revenue[pol] = revenue[pol] + revenue0
                 state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
-        #for r1,r2,r3,r4 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"], revenue["lp_bound"]):
-#            print("dnn lift = %.2f"%(r2/r1-1.0)
-#                , "lp bound lift = %.2f"%(r4/r1-1.0)
-#                , "lpdp lift = %.2f"%(r3/r1-1.0)
-#                )      
+        for r1,r2,r3,r4 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"], revenue["lp_bound"]):
+            print("dnn lift = %.2f"%(r2/r1-1.0)
+                , "lp bound lift = %.2f"%(r4/r1-1.0)
+                , "lpdp lift = %.2f"%(r3/r1-1.0)
+                )      
         
-        for r1,r2,in zip(revenue["fifo"], revenue["dnn"]):
-            print("dnn lift = %.2f"%(r2/r1-1.0))
+#        for r1,r2,in zip(revenue["fifo"], revenue["dnn"]):
+#            print("dnn lift = %.2f"%(r2/r1-1.0))
         
         for pol in policy_list:
             print("policy ", pol, " revenue = {:,}".format(np.mean(revenue[pol])))

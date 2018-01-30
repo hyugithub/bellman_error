@@ -108,17 +108,23 @@ def param_init(param):
     num_batches_training = 200
     param["num_batches_training"] = num_batches_training    
     
+    save_param(param)
+    
     #policy_list = ["fifo", "dnn"]
     #param["policy_list"] = policy_list
 
-if 1:
-    conf = dict()
-    param_init(conf)    
+def save_param(param):
     import json    
-    tmp = dict(zip(conf.keys(), conf.values()))
+    tmp = dict(zip(param.keys(), param.values()))
     tmp["product_resource_map"] = tmp["product_resource_map"].tolist()
     tmp["product_revenue"] = tmp["product_revenue"].tolist()
     tmp["product_demand"] = tmp["product_demand"].tolist()
     tmp["product_prob"] = tmp["product_prob"].tolist()
     with open(tmp["fname_json"], 'w') as fp:
         json.dump(tmp, fp)    
+
+#testing
+if 0:
+    conf = dict()
+    param_init(conf)    
+    
