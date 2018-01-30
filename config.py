@@ -137,4 +137,3 @@ def save_param(param):
 if 0:
     conf = dict()
     param_init(conf)    
-    
