@@ -227,7 +227,7 @@ def simulation(param):
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
     
-    for _ in range(5):
+    for _ in range(1):
         revenue = dict(zip(policy_list, [np.zeros(batch_size)]*len(policy_list)))
         #revenue["fifo"] = np.zeros(batch_size)
         #revenue["dnn"]  = np.zeros(batch_size)

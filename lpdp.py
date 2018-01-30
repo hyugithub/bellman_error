@@ -9,8 +9,9 @@ import config
 import numpy as np
 from lp_module import lp 
 from single_resource_dp import single_resource_dp
+import time
 
-def lpdp(param):
+def lpdp(param):    
     #do a lp and use dual to do dp for each night
     param = conf
     num_nights = param["num_nights"]
@@ -57,6 +58,7 @@ def lpdp(param):
 #        single_resource_dp(adj_rev, resource, conf)
     return 1.0
 
+ts = time.time()
 np.set_printoptions(precision=4)
 conf = dict()
 config.param_init(conf)
@@ -65,3 +67,4 @@ lpdp(conf)
 print("total number to be saved: "
       , conf["num_steps"]*conf["num_nights"]*conf["capacity"]
       )
+print("total policy generation time = %.1f" % (time.time()-ts))
