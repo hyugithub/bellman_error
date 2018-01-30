@@ -7,11 +7,16 @@ Created on Sat Jan 27 23:02:12 2018
 
 import numpy as np
 import sys
+import time
 
 #save all parameters in one location
 
 def param_init(param):
     seed_training = 4321
+    
+    timestamp = time.strftime('%b-%d-%Y_%H_%M_%S', time.gmtime()).lower()
+    param["timestamp"] = timestamp
+    
     np.random.seed(seed_training)
     param["seed_training"] = seed_training
     
@@ -20,12 +25,22 @@ def param_init(param):
     
     if sys.platform == "win32":
         model_path = "C:/Users/hyu/Desktop/bellman/model/"
+        policy_path = "C:/Users/hyu/Desktop/bellman/bid_price/"
     elif sys.platform == "linux":
         model_path = "/home/ubuntu/model/"
+        policy_path = "/home/ubuntu/policy/"
     else:
         model_path = ""
+        policy_path = ""
         
-    fname_output_model = model_path+"dp.ckpt"
+    fname_output_model = "".join([model_path, "dpdnn.",timestamp, ".ckpt"])
+    param["fname_output_model"] = fname_output_model
+    
+    fname_policy = "".join([model_path, "lpdp_value_function.", timestamp, ".npy"])
+    param["fname_policy"] = fname_policy    
+    
+    fname_json = "".join([model_path, "config.", timestamp, ".json"])
+    param["fname_json"] = fname_json    
     
     debug_lp = 1
     param["debug_lp"] = debug_lp
@@ -86,11 +101,19 @@ def param_init(param):
     #try neural network model: input->hidden->output
     
     num_batches_training = 200
-    param["num_batches_training"] = num_batches_training
+    param["num_batches_training"] = num_batches_training    
     
     #policy_list = ["fifo", "dnn"]
     #param["policy_list"] = policy_list
 
-if 0:
+if 1:
     conf = dict()
-    param_init(conf)
+    param_init(conf)    
+    import json    
+    tmp = dict(zip(conf.keys(), conf.values()))
+    tmp["product_resource_map"] = tmp["product_resource_map"].tolist()
+    tmp["product_revenue"] = tmp["product_revenue"].tolist()
+    tmp["product_demand"] = tmp["product_demand"].tolist()
+    tmp["product_prob"] = tmp["product_prob"].tolist()
+    with open(tmp["fname_json"], 'w') as fp:
+        json.dump(tmp, fp)    

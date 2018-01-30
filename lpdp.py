@@ -48,7 +48,8 @@ def lpdp(param):
                                         , product_resource_map[:,night]
                                         , conf)
                         for night in range(num_nights)])
-    np.save("temp.npy", result)
+    fname_policy = param["fname_policy"] 
+    np.save(fname_policy, result)
 #    for night in range(num_nights):
 #        print("solve DP for night", night)
 #        adj_rev = adj_revenue[:,night]
@@ -64,7 +65,3 @@ lpdp(conf)
 print("total number to be saved: "
       , conf["num_steps"]*conf["num_nights"]*conf["capacity"]
       )
-
-def test():
-    tmp = np.load("temp.npy")
-    print(tmp.shape)

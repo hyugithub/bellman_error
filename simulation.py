@@ -28,7 +28,8 @@ class policy_fifo():
     
 class policy_lpdp():      
     def __init__(self, param):
-        fname = "../bid_price/value_function_lpdp.npy"
+        
+        #fname = "../bid_price/value_function_lpdp.npy"
         
         self.num_steps = param["num_steps"]
         self.num_product = param["num_product"]
@@ -38,7 +39,8 @@ class policy_lpdp():
         
         #from night x tstep x inventory to
         # tstep x night x inventory
-        value = np.swapaxes(np.load(fname), 0, 1)
+        fname_policy = param["fname_policy"] 
+        value = np.swapaxes(np.load(fname_policy), 0, 1)
         #bid price is delta V
         self.bid_price = value[:,:,1:] - value[:,:,:-1]
         
