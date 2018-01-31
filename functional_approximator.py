@@ -252,7 +252,7 @@ class error_model_simple_nn:
                              , self.state_rhs_2: data_rhs_2
                              , self.mask: data_mask
                              })            
-        print("loss = %.3f"%result_loss, "bellman error = %.3f"%result_bellman, "boundary error = %.3f"%result_boundary)
+        print("loss = %.4f"%result_loss, "bellman error = %.4f"%result_bellman, "boundary error = %.4f"%result_boundary)
 
     def read_gradients(self
                        , session
@@ -400,6 +400,21 @@ def generate_batch(param, sample_generator = None):
     
     return lhs, rhs1, rhs2, mask, lpb_lhs, lpb_rhs1, lpb_rhs2
     #EOF 
+    
+def generate_batch_from_file(param, sample_generator):
+#    batch_size = param["batch_size"]
+#    num_product = param["num_product"]
+#    num_steps = param["num_steps"]
+#    product_prob = param["product_prob"]
+#    num_nights = param["num_nights"]
+#    capacity = param["capacity"]
+#    product_resource_map = param["product_resource_map"]
+#    product_revenue = param["product_revenue"]
+#    debug_lp = param["debug_lp"]      
+#        
+    #lhs, rhs1, rhs2, mask, lpb_lhs, lpb_rhs1, lpb_rhs2
+    return sample_generator.next()
+    #EOF     
     
 #generate validation data batch with fix time
 def generate_batch_fix_time(param):
@@ -582,4 +597,34 @@ class sample_generation:
                 print("sample generator error", file=fout)
                 print(tstep, file=fout)
         return self.result[tstep], np.full([batch_size,1], tstep)    
+        
+class sample_generation_prebulit:
+    def __init__(self, param):
+        fname_npz = param["fname_npz"]
+
+        data = np.load(fname_npz)
+        self.data_lhs = data["data_lhs"]
+        self.data_rhs_1 = data["data_rhs_1"]
+        self.data_rhs_2 = data["data_rhs_2"]
+        self.data_mask = data["data_mask"]
+        self.lp_bound_lhs = data["lp_bound_lhs"]
+        self.lp_bound_rhs_1 = data["lp_bound_rhs_1"] 
+        self.lp_bound_rhs_2 = data["lp_bound_rhs_2"]  
+        
+        self.count = 0        
+        self.max = self.data_lhs.shape[0]
+        self.order = np.arange(self.max)
+        np.random.shuffle(self.order)
+        #print(self.data_lhs.shape)
+        #print(type(self.order))
+    
+    def next(self):
+        index = self.order[self.count]
+        if self.count >= self.max-1:
+            self.count == 0
+            self.order = np.random.shuffle(np.arange(self.max))
+        return self.data_lhs[index], self.data_rhs_1[index] \
+            , self.data_rhs_2[index], self.data_mask[index] \
+            , self.lp_bound_lhs[index], self.lp_bound_rhs_1[index] \
+            , self.lp_bound_rhs_2[index]        
         

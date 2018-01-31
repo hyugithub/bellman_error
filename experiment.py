@@ -78,7 +78,8 @@ model.build()
 conf["model"] = model
 
 num_batches_training = conf["num_batches_training"] 
-sg = sample_generation(conf)
+#sg = sample_generation(conf)
+sg = sample_generation_prebulit(conf)
 first_run = True
 
 saver = tf.train.Saver()
@@ -90,7 +91,8 @@ with tf.Session() as sess:
     for batch in range(num_batches_training):
         #generate data for LHS V(s,t)
         
-        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(conf, sg)
+        #data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(conf, sg)
+        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_from_file(conf, sg)
         
         if first_run:
             first_run = False
@@ -138,8 +140,9 @@ with tf.Session() as sess:
             print("batch = ", batch, " validation")
             if 1:
                 #get a different batch and sample again
-                data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(conf, sg)
-            model.read_loss(sess
+                #data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(conf, sg)                
+                data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_from_file(conf, sg)
+                model.read_loss(sess
                     , data_lhs
                     , data_rhs_1
                     , data_rhs_2
@@ -163,7 +166,8 @@ with tf.Session() as sess:
     print("validation for random samples:")    
     for vb in range(1):
         print("validation batch ", vb)
-        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(conf, sg)
+        #data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(conf, sg)
+        data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_from_file(conf, sg)
         model.read_loss(sess
                     , data_lhs
                     , data_rhs_1

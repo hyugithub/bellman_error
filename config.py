@@ -47,6 +47,9 @@ def param_init(param):
     fname_json = "".join([model_path, "config.", timestamp, ".json"])
     param["fname_json"] = fname_json    
     
+    fname_npz = "".join([model_path, "batch_b64.npz"])
+    param["fname_npz"] = fname_npz
+    
     debug_lp = 1
     param["debug_lp"] = debug_lp
     
