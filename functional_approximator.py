@@ -559,13 +559,19 @@ class sample_generation:
             state = state - np.multiply(resource, np.reshape(admit, [batch_size,1]))
             self.result[tstep] = state        
         self.num_steps = num_steps
-        self.order = np.arange(num_steps)
+        #note: we don't want to return a state with t=0 because 
+        # the state may be used later to get rhs
+        # so all valid state should have tstep >=1
+        self.order = np.arange(1, num_steps)
         self.tstep = 0
         np.random.shuffle(self.order)
         
     def next(self):
         batch_size = self.param["batch_size"]
-        if self.tstep >= self.num_steps:
+        # see note a few lines above. self.tstep is a counter
+        # starting from 0. should when it reaches num_steps-1
+        # we are running out of new data in self.order
+        if self.tstep >= self.num_steps-1:
             # what if we run out of sample? just shuffle again
             # and start over            
             self.build()
