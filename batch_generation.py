@@ -78,7 +78,7 @@ def batch_data_prep():
                                                , int(s)))
         jobs.append(proc)
     for j in jobs:
-            j.start()
+        j.start()
     for j in jobs:
         j.join()
     #    sg = sample_generation(conf)

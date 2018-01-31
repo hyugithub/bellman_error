@@ -40,10 +40,16 @@ def lp(cap_supply, cap_demand, param, return_dual = False):
     objective.SetMaximization()    
     
     try:
-        solver.Solve()
+        status = solver.Solve()
+        if status != solver.OPTIMAL:
+            timestamp = time.strftime('%b-%d-%Y_%H_%M_%S', time.gmtime()).lower()
+            fname_lp_exception = "".join(["lp.", timestamp, ".log"])
+            with open(fname_lp_exception, "a") as fout:
+                print(cap_supply, file=fout)
+                print(cap_demand, file=fout)
     except:
         timestamp = time.strftime('%b-%d-%Y_%H_%M_%S', time.gmtime()).lower()
-        fname_lp_exception = "".join(["lp.", timpestamp, ".log"])
+        fname_lp_exception = "".join(["lp.", timestamp, ".log"])
         with open(fname_lp_exception, "a") as fout:
             print(cap_supply, file=fout)
             print(cap_demand, file=fout)

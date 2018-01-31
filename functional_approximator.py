@@ -352,13 +352,17 @@ def generate_batch(param, sample_generator = None):
         data_lhs_0 = np.random.choice(capacity+1, [batch_size, num_nights])
         time_lhs = np.random.choice(range(1,num_steps), [batch_size,1])                                       
     else:
-        data_lhs_0, time_lhs = sample_generator.next()
+        data_lhs_0, time_lhs = sample_generator.next()    
     
     lpb_lhs = np.ones(batch_size)
     lpb_rhs2 = np.ones(batch_size)
     lpb_rhs1 = np.ones([batch_size, num_product])
     
     if debug_lp:
+        if np.any(time_lhs<-1e-6):
+            with open("lp.error.log","a") as fout:
+                print("batch generation error", file=fout)
+                print(time_lhs, file=fout)
         lpb_lhs = np.asarray([lp(data_lhs_0[b].astype(np.float32)
                                 , (time_lhs[b]*product_prob).astype(np.float32)
                                 , param) for b in range(batch_size)])
@@ -538,7 +542,6 @@ class sample_generation:
         capacity = self.param["capacity"]
         product_resource_map = self.param["product_resource_map"]
         product_revenue = self.param["product_revenue"]
-        batch_size = self.param["batch_size"]
         num_product = self.param["num_product"]
             
         #generate demand for all tsteps
@@ -554,19 +557,23 @@ class sample_generation:
             #admit = np.ones((batch_size, 1))
             admit = 1-np.any((state-resource)<-1e-6, axis=1).astype(int)
             state = state - np.multiply(resource, np.reshape(admit, [batch_size,1]))
-            self.result[tstep] = state
-        self.tstep = 0
+            self.result[tstep] = state        
         self.num_steps = num_steps
         self.order = np.arange(num_steps)
+        self.tstep = 0
         np.random.shuffle(self.order)
         
     def next(self):
         batch_size = self.param["batch_size"]
         if self.tstep >= self.num_steps:
+            # what if we run out of sample? just shuffle again
+            # and start over            
             self.build()
         tstep = self.order[self.tstep]
-        self.tstep += 1
-        # what if we run out of sample? just shuffle again
-        # and start over
-        #TODO: we can probably do better here
+        self.tstep += 1        
+        if tstep < 0:
+            with open("lp.error.log","a") as fout:
+                print("sample generator error", file=fout)
+                print(tstep, file=fout)
         return self.result[tstep], np.full([batch_size,1], tstep)    
+        
