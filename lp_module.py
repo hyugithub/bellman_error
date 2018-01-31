@@ -39,7 +39,14 @@ def lp(cap_supply, cap_demand, param, return_dual = False):
     objective.SetCoefficient(x[product_null], -1.0)        
     objective.SetMaximization()    
     
-    solver.Solve()
+    try:
+        solver.Solve()
+    except:
+        timestamp = time.strftime('%b-%d-%Y_%H_%M_%S', time.gmtime()).lower()
+        fname_lp_exception = "".join(["lp.", timpestamp, ".log"])
+        with open(fname_lp_exception, "a") as fout:
+            print(cap_supply, file=fout)
+            print(cap_demand, file=fout)
     
     dual = np.array([c.dual_value() for c in constraints])
     #print("dual value:")
