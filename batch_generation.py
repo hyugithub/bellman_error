@@ -120,6 +120,45 @@ def batch_data_prep():
                        
     
     #EOF
+    
+def batch_data_prep_part2():    
+    
+    num_processes = 15    
+    num_batch_gen = 1000
+    path = "C:/Users/hyu/Desktop/bellman/model/"
+    
+    result = [None] * num_processes
+    for p in range(num_processes):
+        fname_output = "".join([path,"batch_gen.", str(p), ".npz"])    
+        result[p] = np.load(fname_output)
+    
+    data_lhs = np.stack([result[p]["data_lhs"] for p in range(num_processes)])
+    data_rhs_1 = np.stack([result[p]["data_rhs_1"] for p in range(num_processes)])
+    data_rhs_2 = np.stack([result[p]["data_rhs_2"] for p in range(num_processes)])
+    data_mask = np.stack([result[p]["data_mask"] for p in range(num_processes)])
+    lp_bound_lhs = np.stack([result[p]["lp_bound_lhs"] for p in range(num_processes)])
+    lp_bound_rhs_1 = np.stack([result[p]["lp_bound_rhs_1"] for p in range(num_processes)])
+    lp_bound_rhs_2 = np.stack([result[p]["lp_bound_rhs_2"] for p in range(num_processes)])     
+    
+    data_lhs = np.reshape(data_lhs, tuple([-1]+list(data_lhs.shape[2:])))
+    data_rhs_1 = np.reshape(data_rhs_1, tuple([-1]+list(data_rhs_1.shape[2:])))
+    data_rhs_2 = np.reshape(data_rhs_2, tuple([-1]+list(data_rhs_2.shape[2:])))
+    data_mask = np.reshape(data_mask, tuple([-1]+list(data_mask.shape[2:])))
+    lp_bound_lhs = np.reshape(lp_bound_lhs, tuple([-1]+list(lp_bound_lhs.shape[2:])))
+    lp_bound_rhs_1 = np.reshape(lp_bound_rhs_1, tuple([-1]+list(lp_bound_rhs_1.shape[2:])))
+    lp_bound_rhs_2 = np.reshape(lp_bound_rhs_2, tuple([-1]+list(lp_bound_rhs_2.shape[2:])))
+    
+    fname = "batch.npz"
+    np.savez(fname
+             , data_lhs=data_lhs
+             , data_rhs_1=data_rhs_1
+             , data_rhs_2=data_rhs_2
+             , data_mask=data_mask
+             , lp_bound_lhs=lp_bound_lhs
+             , lp_bound_rhs_1=lp_bound_rhs_1
+             , lp_bound_rhs_2=lp_bound_rhs_2            
+             )
+    
 def batch_data_load():
     fname = "batch.npz"
     data = np.load(fname)
@@ -153,3 +192,6 @@ if __name__ == '__main__':
     print("total batch data preparation time = %.2f"%(time.time()-ts))
 #    batch_data_load()
     
+if 0:
+    batch_data_prep_part2()
+    batch_data_load()
