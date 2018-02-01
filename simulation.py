@@ -18,6 +18,7 @@ import itertools
 from config import param_init
 from lp_module import lp
 from functional_approximator import *
+from multiprocessing import Pool
 
 def worker(arg):
     seed, policy_name = arg
@@ -184,9 +185,10 @@ class policy_dnn():
         
         sess = tf.Session() 
         self.sess = sess
-        fname_model = "C:/Users/hyu/Desktop/bellman/model/dpdnn.feb-01-2018_16_45_40.ckpt"
+        #fname_model = "C:/Users/hyu/Desktop/bellman/model/dpdnn.feb-01-2018_16_45_40.ckpt"
+        fname_tensorflow_model = param["fname_tensorflow_model"]
         # load tensorflow saved model
-        saver.restore(sess, fname_model)        
+        saver.restore(sess, fname_tensorflow_model )        
         print("Tensorflow model building time = %.2f"%(time.time()-ts))        
     def do(self, s, r, p, tstep, param):
         #load parametrs
@@ -270,7 +272,8 @@ class policy_dnn():
 
 def simulation():    
     conf = dict()
-    param_init(conf)    
+    param_init(conf)
+    batch_size = conf["batch_size"]
         
     # we should use the same seed for both fifo and new policy 
     # to reduce variance
@@ -290,7 +293,7 @@ def simulation():
     # as part of validation. we think the sample 
     # mean should be good. not sure about variance
     #num_iterations = 30
-    num_iterations = 30
+    num_iterations = 1
     
     seed_demand = np.random.choice(32452843, [num_iterations]) % 15485863	
     
@@ -300,10 +303,16 @@ def simulation():
     args = []
     for i in range(num_iterations):         
         for p in policy_list:
-            args.append((seed_demand[i], policy))        
-        
-    with Pool(5) as p:
-        print(p.map(worker, args)) 
+            args.append((seed_demand[i], p))        
+    num_processors = 4 
+    with Pool(num_processors) as p:
+        #result has dimension of (num_iter x policy) x batch_size
+        result = p.map(worker, args)
+
+    result = np.array(result)
+    result = np.reshape(result, [num_iterations, len(policy_list), batch_size])
+    result = np.swapaxes(result, 0, 1)
+    print(result.shape)
 #        for r1,r2,in zip(revenue["fifo"], revenue["dnn"]):
 #            print("dnn lift = %.2f"%(r2/r1-1.0))
         
