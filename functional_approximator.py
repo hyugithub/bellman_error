@@ -11,6 +11,7 @@ import itertools
 from lp_module import lp
 from simulation import *
 import config
+from multiprocessing import Pool
 
 class error_model_simple_nn:
     def __init__(self, param):
@@ -621,9 +622,9 @@ class sample_generation_prebulit:
     def next(self):
         index = self.order[self.count]
         self.count += 1
-        if self.count >= self.max-1:
-            self.count == 0
-            np.random.shuffle(np.arange(self.max))
+        if self.count >= len(self.order):
+            self.count = 0
+            np.random.shuffle(self.order)
         return self.data_lhs[index], self.data_rhs_1[index] \
             , self.data_rhs_2[index], self.data_mask[index] \
             , self.lp_bound_lhs[index], self.lp_bound_rhs_1[index] \
