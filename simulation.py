@@ -304,7 +304,7 @@ def simulation():
     for i in range(num_iterations):         
         for p in policy_list:
             args.append((seed_demand[i], p))        
-    num_processors = 4 
+    num_processors = 7 
     with Pool(num_processors) as p:
         #result has dimension of (num_iter x policy) x batch_size
         result = p.map(worker, args)
@@ -316,8 +316,13 @@ def simulation():
 #        for r1,r2,in zip(revenue["fifo"], revenue["dnn"]):
 #            print("dnn lift = %.2f"%(r2/r1-1.0))
         
-#        for pol in policy_list:
-#            print("policy ", pol, " revenue = {:,}".format(np.mean(revenue[pol])))
+    print("total revenue:")
+    for k in range(len(policy_list)):
+        print("policy ", policy_list[k], " revenue = %.f"%np.mean(result[k], axis=(1,2)))
+
+    positive = np.sum( (result[1]-result[2]>=10.0).astype(int))
+    negative = np.sum( (result[1]-result[2]<=-10.0).astype(int))
+    print("Total cases = ", result[1].size, " positive = ", positive, " negative = ", negative)
             
 if __name__ == '__main__':    
 #    for spyder    
