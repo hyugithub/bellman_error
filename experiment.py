@@ -197,8 +197,8 @@ with tf.Session() as sess:
     
 
     # next part is validation
-    ts = time.time()    
-    if 0:
-        simulation(conf)
-    print("simulation validation time = %.2f seconds"% (time.time()-ts))
+#    ts = time.time()    
+#    if 1:
+#        simulation(conf)
+#    print("simulation validation time = %.2f seconds"% (time.time()-ts))
     

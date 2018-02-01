@@ -15,7 +15,9 @@ from tensorflow.python.framework import ops
 import time
 #from ortools.linear_solver import pywraplp
 import itertools
+from config import param_init
 from lp_module import lp
+from functional_approximator import *
 
 class policy_fifo():      
     def do(self, s, r, p, tstep, param):
@@ -216,17 +218,15 @@ def simulation(param):
     np.random.seed(seed_simulation)
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
-    
-    for _ in range(1):
-        batch_size = param["batch_size"]
-        num_product = param["num_product"]
-        num_steps = param["num_steps"]
-        product_prob = param["product_prob"]
-        num_nights = param["num_nights"]
-        capacity = param["capacity"]
-        product_resource_map = param["product_resource_map"]
-        product_revenue = param["product_revenue"]
-        
+    batch_size = param["batch_size"]
+    num_product = param["num_product"]
+    num_steps = param["num_steps"]
+    product_prob = param["product_prob"]
+    num_nights = param["num_nights"]
+    capacity = param["capacity"]
+    product_resource_map = param["product_resource_map"]
+    product_revenue = param["product_revenue"]    
+    for _ in range(1):        
         revenue = dict(zip(policy_list, [np.zeros(batch_size)]*len(policy_list)))
         #revenue["fifo"] = np.zeros(batch_size)
         #revenue["dnn"]  = np.zeros(batch_size)
@@ -260,3 +260,27 @@ def simulation(param):
         
         for pol in policy_list:
             print("policy ", pol, " revenue = {:,}".format(np.mean(revenue[pol])))
+            
+if __name__ == '__main__':    
+#    for spyder    
+    __spec__ = None    
+    ts = time.time()
+    conf = dict()
+    param_init(conf)
+        
+    tf.reset_default_graph()
+    
+    #build model with variables to be initialized
+    model = error_model_simple_nn(conf)
+    model.build()
+    conf["model"] = model
+    saver = tf.train.Saver()
+
+    with tf.Session() as sess:
+        conf["sess"] = sess
+        fname_model = "C:/Users/hyu/Desktop/bellman/model/dpdnn.feb-01-2018_03_00_44.ckpt"
+        # load tensorflow saved model
+        saver.restore(sess, fname_model)        
+        
+        simulation(conf)
+    print("total batch data preparation time = %.2f"%(time.time()-ts))
