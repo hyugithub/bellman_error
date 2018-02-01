@@ -19,6 +19,53 @@ from config import param_init
 from lp_module import lp
 from functional_approximator import *
 
+def worker(seed, policy_name):
+    conf = dict()
+    param_init(conf)
+    
+    if policy_name == "fifo":
+        policy = policy_fifo()
+    if policy_name == "dnn":
+        policy = policy_dnn(conf)
+    if policy_name == "lpdp":
+        #policy = policy_fifo()
+        policy = policy_lpdp(conf)            
+    if policy_name == "lp_bound":
+        policy = policy_lp_bound()            
+    
+    batch_size = conf["batch_size"]
+    num_product = conf["num_product"]
+    num_steps = conf["num_steps"]
+    product_prob = conf["product_prob"]
+    num_nights = conf["num_nights"]
+    capacity = conf["capacity"]
+    product_resource_map = conf["product_resource_map"]
+    product_revenue = conf["product_revenue"]   
+    revenue = np.zeros(batch_size)
+    
+    # for each time step, generate demand
+    np.random.seed(seed)
+    demand = np.random.choice(range(num_product)
+                                , size=(num_steps, batch_size)
+                                , p=product_prob
+                             )
+    state = np.ones([batch_size, num_nights])*capacity
+    
+    for s in np.arange(start=num_steps-1, stop=0, step=-1):
+        resource = np.stack([product_resource_map[p] for p in demand[s]])
+        
+        admit = policy.do(state, resource, demand[s], s, conf)
+        revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
+        revenue += revenue0
+        state = state - np.multiply(resource, np.reshape(admit, [batch_size,1]))
+#        for r1,r2,r3,r4 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"], revenue["lp_bound"]):
+#            print("dnn lift = %.2f"%(r2/r1-1.0)
+#                , "lp bound lift = %.2f"%(r4/r1-1.0)
+#                , "lpdp lift = %.2f"%(r3/r1-1.0)
+#                )      
+    policy.close()
+    return revenue.tolist()
+
 class policy_fifo():      
     def do(self, s, r, p, tstep, param):
         #s is remaining capacity batch_size x state
@@ -249,55 +296,10 @@ def simulation():
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
  
-    for i in range(num_iterations): 
-        
-        seed_dem = seed_demand[i]
-
-        
-        #revenue["fifo"] = np.zeros(batch_size)
-        #revenue["dnn"]  = np.zeros(batch_size)
-        
+    for i in range(num_iterations):         
+        seed_dem = seed_demand[i]        
         for p in policy_list:
-            if p == "fifo":
-                policy = policy_fifo()
-            if p == "dnn":
-                policy = policy_dnn(conf)
-            if p == "lpdp":
-                #policy = policy_fifo()
-                policy = policy_lpdp(conf)            
-            if p == "lp_bound":
-                policy = policy_lp_bound()            
-            
-            batch_size = conf["batch_size"]
-            num_product = conf["num_product"]
-            num_steps = conf["num_steps"]
-            product_prob = conf["product_prob"]
-            num_nights = conf["num_nights"]
-            capacity = conf["capacity"]
-            product_resource_map = conf["product_resource_map"]
-            product_revenue = conf["product_revenue"]   
-            revenue = np.zeros(batch_size)
-            # for each time step, generate demand
-            np.random.seed(seed_dem)
-            demand = np.random.choice(range(num_product)
-                                        , size=(num_steps, batch_size)
-                                        , p=product_prob
-                                     )
-            state = np.ones([batch_size, num_nights])*capacity
-            
-            for s in np.arange(start=num_steps-1, stop=0, step=-1):
-                resource = np.stack([product_resource_map[p] for p in demand[s]])
-                
-                admit = policy.do(state, resource, demand[s], s, conf)
-                revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
-                revenue += revenue0
-                state = state - np.multiply(resource, np.reshape(admit, [batch_size,1]))
-#        for r1,r2,r3,r4 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"], revenue["lp_bound"]):
-#            print("dnn lift = %.2f"%(r2/r1-1.0)
-#                , "lp bound lift = %.2f"%(r4/r1-1.0)
-#                , "lpdp lift = %.2f"%(r3/r1-1.0)
-#                )      
-            policy.close()
+            worker(seed_dem, p)
 #        for r1,r2,in zip(revenue["fifo"], revenue["dnn"]):
 #            print("dnn lift = %.2f"%(r2/r1-1.0))
         
