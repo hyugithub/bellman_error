@@ -86,7 +86,7 @@ saver = tf.train.Saver()
 with tf.Session() as sess:    
     conf["sess"] = sess
     sess.run(tf.global_variables_initializer())    
-        
+
     for batch in range(num_batches_training):
         #generate data for LHS V(s,t)
         
@@ -135,12 +135,24 @@ with tf.Session() as sess:
                     , lp_bound_rhs_1
                     , lp_bound_rhs_2)
         # statistics accumulation
-        if 1 and batch % 50 == 0:              
+        if 1 and batch % 100 == 0:              
             print("batch = ", batch, " validation")
+            print("on training:")
+            print("check %.4f"%np.sum(lp_bound_lhs))
+            model.read_loss(sess
+                , data_lhs
+                , data_rhs_1
+                , data_rhs_2
+                , data_mask
+                , lp_bound_lhs
+                , lp_bound_rhs_1
+                , lp_bound_rhs_2)
             if 1:
                 #get a different batch and sample again
                 #data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch(conf, sg)                
                 data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_from_file(conf, sg)
+                print("on new validation")
+                print("check %.4f"%np.sum(lp_bound_lhs))
                 model.read_loss(sess
                     , data_lhs
                     , data_rhs_1
