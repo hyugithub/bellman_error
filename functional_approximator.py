@@ -623,7 +623,7 @@ class sample_generation_prebulit:
         self.count += 1
         if self.count >= self.max-1:
             self.count == 0
-            self.order = np.random.shuffle(np.arange(self.max))
+            np.random.shuffle(np.arange(self.max))
         return self.data_lhs[index], self.data_rhs_1[index] \
             , self.data_rhs_2[index], self.data_mask[index] \
             , self.lp_bound_lhs[index], self.lp_bound_rhs_1[index] \
