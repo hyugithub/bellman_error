@@ -620,6 +620,7 @@ class sample_generation_prebulit:
     
     def next(self):
         index = self.order[self.count]
+        self.count += 1
         if self.count >= self.max-1:
             self.count == 0
             self.order = np.random.shuffle(np.arange(self.max))
