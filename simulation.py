@@ -22,7 +22,7 @@ from functional_approximator import *
 class policy_fifo():      
     def do(self, s, r, p, tstep, param):
         #s is remaining capacity batch_size x state
-        #r is resource needed for product p batch_size x ?
+        #r is resource needed for product p batch_size x ?night
         #p is products batch_size x 1
         #print(type(s), type(r), type(p))
         return (1.0-np.any((s-r)<0, axis=1)).astype(int)

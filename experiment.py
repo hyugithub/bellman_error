@@ -5,8 +5,7 @@ Created on Tue Jan 30 11:24:06 2018
 @author: hyu
 """
 
-#the purpose of this file is to run training and validation
-#
+#the purpose of this file is to run NN training only
 
 import sys
 import numpy as np
@@ -121,7 +120,7 @@ with tf.Session() as sess:
                     , lp_bound_lhs
                     , lp_bound_rhs_1
                     , lp_bound_rhs_2)                        
-            print("Before even training, check parameters end\n")
+            print("Before even training, check parameters end\n\n")
                 
         #we will have to run the session twice since tensorflow does
         # not ensure all tasks are executed in a pre-determined order per
@@ -136,7 +135,7 @@ with tf.Session() as sess:
                     , lp_bound_rhs_1
                     , lp_bound_rhs_2)
         # statistics accumulation
-        if 1 and batch % 10 == 0:              
+        if 1 and batch % 50 == 0:              
             print("batch = ", batch, " validation")
             if 1:
                 #get a different batch and sample again
@@ -162,7 +161,7 @@ with tf.Session() as sess:
             sys.stdout.flush() 
             
     save_path = saver.save(sess, fname_output_model) 
-
+    
     print("validation for random samples:")    
     for vb in range(1):
         print("validation batch ", vb)
@@ -177,7 +176,7 @@ with tf.Session() as sess:
                     , lp_bound_rhs_1
                     , lp_bound_rhs_2)
         
-    print("validation for monotonicity when state is fixed:")    
+    print("validation for monotonicity when state = constant:")    
     for vb in range(1):
         print("validation batch ", vb)
         #data_lhs, data_rhs_1, data_rhs_2, data_mask, lp_bound_lhs, lp_bound_rhs_1, lp_bound_rhs_2 = generate_batch_t0()
@@ -194,11 +193,4 @@ with tf.Session() as sess:
         print(val)
 
     print("total model building time = %.2f seconds" % (time.time()-ts), " time per batch = %.2f sec"%((time.time()-ts)/num_batches_training))
-    
-
-    # next part is validation
-#    ts = time.time()    
-#    if 1:
-#        simulation(conf)
-#    print("simulation validation time = %.2f seconds"% (time.time()-ts))
     
