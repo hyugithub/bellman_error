@@ -5,8 +5,8 @@ Created on Sat Jan 27 23:45:18 2018
 @author: hyu
 """
 
-#the purpose of this file is to generate a simple functional
-# approximator to V(s,t)
+#the purpose of this file is to simulate and validate
+#performance of algorithm
 
 import sys
 import numpy as np
