@@ -318,7 +318,7 @@ def simulation():
         
     print("total revenue:")
     for k in range(len(policy_list)):
-        print("policy ", policy_list[k], " revenue = %.f"%np.mean(result[k], axis=(1,2)))
+        print("policy ", policy_list[k], " revenue = %.f"%np.mean(result[k]))
 
     positive = np.sum( (result[1]-result[2]>=10.0).astype(int))
     negative = np.sum( (result[1]-result[2]<=-10.0).astype(int))
