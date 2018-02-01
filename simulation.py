@@ -75,8 +75,8 @@ class policy_lp_bound():
         product_prob = param["product_prob"]
         capacity = param["capacity"]
         num_steps = param["num_steps"]
-        model = param["model"]
-        sess = param["sess"]
+        #model = param["model"]
+        #sess = param["sess"]
         product_revenue = param["product_revenue"]
         
         # check resource
@@ -115,6 +115,25 @@ class policy_lp_bound():
     #EOC    
     
 class policy_dnn():      
+    def __init__(self, param):            
+        param_init(param)           
+        ts = time.time()    
+        # we will need this later
+        #if 0:
+        tf.reset_default_graph()        
+        #build model with variables to be initialized
+        model = error_model_simple_nn(param)
+        model.build()      
+        self.model = model
+        
+        saver = tf.train.Saver()
+        
+        sess = tf.Session() 
+        self.sess = sess
+        fname_model = "C:/Users/hyu/Desktop/bellman/model/dpdnn.feb-01-2018_16_45_40.ckpt"
+        # load tensorflow saved model
+        saver.restore(sess, fname_model)        
+        print("Tensorflow model building time = %.2f"%(time.time()-ts))        
     def do(self, s, r, p, tstep, param):
         #load parametrs
         batch_size = param["batch_size"]
@@ -122,8 +141,10 @@ class policy_dnn():
         product_prob = param["product_prob"]
         capacity = param["capacity"]
         num_steps = param["num_steps"]
-        model = param["model"]
-        sess = param["sess"]
+        #model = param["model"]
+        #sess = param["sess"]
+        model = self.model
+        sess = self.sess
         product_revenue = param["product_revenue"]
         
         # check resource
@@ -188,16 +209,24 @@ class policy_dnn():
         
         #return flag
         #EOF
+    def close():
+        self.sess.close()
         
     #EOC        
 
-def simulation(param):    
+def simulation():    
+    conf = dict()
+    param_init(conf)    
+        
     # we should use the same seed for both fifo and new policy 
     # to reduce variance
     #load parameters 
-    seed_simulation = param["seed_simulation"]  
+    seed_simulation = conf["seed_simulation"]  
+    np.random.seed(seed_simulation)
     
-    #policy_list = param["policy_list"]
+    #generate seeds for each batch demand    
+    
+    #policy_list = conf["policy_list"]
     policy_list = ["fifo", "dnn", "lpdp", "lp_bound"]
     #policy_list = ["fifo", "dnn"]
     
@@ -208,24 +237,24 @@ def simulation(param):
         if p == "fifo":
             policy[p] = policy_fifo()
         if p == "dnn":
-            policy[p] = policy_dnn()
+            policy[p] = policy_dnn(conf)
         if p == "lpdp":
             #policy[p] = policy_fifo()
-            policy[p] = policy_lpdp(param)            
+            policy[p] = policy_lpdp(conf)            
         if p == "lp_bound":
             policy[p] = policy_lp_bound()
         
-    np.random.seed(seed_simulation)
+    
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
-    batch_size = param["batch_size"]
-    num_product = param["num_product"]
-    num_steps = param["num_steps"]
-    product_prob = param["product_prob"]
-    num_nights = param["num_nights"]
-    capacity = param["capacity"]
-    product_resource_map = param["product_resource_map"]
-    product_revenue = param["product_revenue"]    
+    batch_size = conf["batch_size"]
+    num_product = conf["num_product"]
+    num_steps = conf["num_steps"]
+    product_prob = conf["product_prob"]
+    num_nights = conf["num_nights"]
+    capacity = conf["capacity"]
+    product_resource_map = conf["product_resource_map"]
+    product_revenue = conf["product_revenue"]    
     for _ in range(1):        
         revenue = dict(zip(policy_list, [np.zeros(batch_size)]*len(policy_list)))
         #revenue["fifo"] = np.zeros(batch_size)
@@ -245,7 +274,7 @@ def simulation(param):
         for s in np.arange(start=num_steps-1, stop=0, step=-1):
             resource = np.stack([product_resource_map[p] for p in demand[s]])
             for pol in policy_list:
-                admit = policy[pol].do(state[pol], resource, demand[s], s, param)
+                admit = policy[pol].do(state[pol], resource, demand[s], s, conf)
                 revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
                 revenue[pol] = revenue[pol] + revenue0
                 state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
@@ -265,22 +294,5 @@ if __name__ == '__main__':
 #    for spyder    
     __spec__ = None    
     ts = time.time()
-    conf = dict()
-    param_init(conf)
-        
-    tf.reset_default_graph()
-    
-    #build model with variables to be initialized
-    model = error_model_simple_nn(conf)
-    model.build()
-    conf["model"] = model
-    saver = tf.train.Saver()
-
-    with tf.Session() as sess:
-        conf["sess"] = sess
-        fname_model = "C:/Users/hyu/Desktop/bellman/model/dpdnn.feb-01-2018_03_00_44.ckpt"
-        # load tensorflow saved model
-        saver.restore(sess, fname_model)        
-        
-        simulation(conf)
+    simulation()
     print("total batch data preparation time = %.2f"%(time.time()-ts))
