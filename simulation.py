@@ -19,7 +19,8 @@ from config import param_init
 from lp_module import lp
 from functional_approximator import *
 
-def worker(seed, policy_name):
+def worker(arg):
+    seed, policy_name = arg
     conf = dict()
     param_init(conf)
     
@@ -289,17 +290,20 @@ def simulation():
     # as part of validation. we think the sample 
     # mean should be good. not sure about variance
     #num_iterations = 30
-    num_iterations = 1
+    num_iterations = 30
     
     seed_demand = np.random.choice(32452843, [num_iterations]) % 15485863	
     
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
  
+    args = []
     for i in range(num_iterations):         
-        seed_dem = seed_demand[i]        
         for p in policy_list:
-            worker(seed_dem, p)
+            args.append((seed_demand[i], policy))        
+        
+    with Pool(5) as p:
+        print(p.map(worker, args)) 
 #        for r1,r2,in zip(revenue["fifo"], revenue["dnn"]):
 #            print("dnn lift = %.2f"%(r2/r1-1.0))
         
