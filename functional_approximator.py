@@ -9,7 +9,7 @@ import time
 #from ortools.linear_solver import pywraplp
 import itertools
 from lp_module import lp
-from simulation import simulation
+from simulation import *
 import config
 
 class error_model_simple_nn:
