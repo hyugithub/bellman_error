@@ -26,6 +26,8 @@ class policy_fifo():
         #p is products batch_size x 1
         #print(type(s), type(r), type(p))
         return (1.0-np.any((s-r)<0, axis=1)).astype(int)
+    def close(self):
+        return
     #EOC
     
 class policy_lpdp():      
@@ -66,6 +68,8 @@ class policy_lpdp():
             if rev >= bid_price:
                 flag2[b] = 1.0
         return np.logical_and(flag, flag2)
+    def close(self):
+        return
     #EOC    
 
 class policy_lp_bound():                  
@@ -112,6 +116,8 @@ class policy_lp_bound():
         
         #print(avail.shape, flag.shape)        
         return np.multiply(avail, flag)
+    def close(self):
+        return
     #EOC    
     
 class policy_dnn():      
@@ -209,7 +215,7 @@ class policy_dnn():
         
         #return flag
         #EOF
-    def close():
+    def close(self):
         self.sess.close()
         
     #EOC        
@@ -231,64 +237,72 @@ def simulation():
     #policy_list = ["fifo", "dnn"]
     
     #policy = dict(zip(policy_list,[policy_fifo(), policy_dnn()]))
+            
+    #30 x 64 gives us about 2000 samples 
+    # as part of validation. we think the sample 
+    # mean should be good. not sure about variance
+    #num_iterations = 30
+    num_iterations = 1
     
-    policy = dict()
-    for p in policy_list:
-        if p == "fifo":
-            policy[p] = policy_fifo()
-        if p == "dnn":
-            policy[p] = policy_dnn(conf)
-        if p == "lpdp":
-            #policy[p] = policy_fifo()
-            policy[p] = policy_lpdp(conf)            
-        if p == "lp_bound":
-            policy[p] = policy_lp_bound()
-        
+    seed_demand = np.random.choice(32452843, [num_iterations]) % 15485863	
     
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
-    batch_size = conf["batch_size"]
-    num_product = conf["num_product"]
-    num_steps = conf["num_steps"]
-    product_prob = conf["product_prob"]
-    num_nights = conf["num_nights"]
-    capacity = conf["capacity"]
-    product_resource_map = conf["product_resource_map"]
-    product_revenue = conf["product_revenue"]    
-    for _ in range(1):        
-        revenue = dict(zip(policy_list, [np.zeros(batch_size)]*len(policy_list)))
+ 
+    for i in range(num_iterations): 
+        
+        seed_dem = seed_demand[i]
+
+        
         #revenue["fifo"] = np.zeros(batch_size)
         #revenue["dnn"]  = np.zeros(batch_size)
         
-        # for each time step, generate demand
-        demand = np.random.choice(range(num_product)
-                                    , size=(num_steps, batch_size)
-                                    , p=product_prob
-                                 )
-        state = dict(zip(policy_list
-                , [np.ones([batch_size, num_nights])*capacity]*len(policy_list)
-                ))
-        #state["fifo"] = np.ones([batch_size, num_nights])*capacity
-        #state["dnn"] = np.ones([batch_size, num_nights])*capacity
+        for p in policy_list:
+            if p == "fifo":
+                policy = policy_fifo()
+            if p == "dnn":
+                policy = policy_dnn(conf)
+            if p == "lpdp":
+                #policy = policy_fifo()
+                policy = policy_lpdp(conf)            
+            if p == "lp_bound":
+                policy = policy_lp_bound()            
             
-        for s in np.arange(start=num_steps-1, stop=0, step=-1):
-            resource = np.stack([product_resource_map[p] for p in demand[s]])
-            for pol in policy_list:
-                admit = policy[pol].do(state[pol], resource, demand[s], s, conf)
+            batch_size = conf["batch_size"]
+            num_product = conf["num_product"]
+            num_steps = conf["num_steps"]
+            product_prob = conf["product_prob"]
+            num_nights = conf["num_nights"]
+            capacity = conf["capacity"]
+            product_resource_map = conf["product_resource_map"]
+            product_revenue = conf["product_revenue"]   
+            revenue = np.zeros(batch_size)
+            # for each time step, generate demand
+            np.random.seed(seed_dem)
+            demand = np.random.choice(range(num_product)
+                                        , size=(num_steps, batch_size)
+                                        , p=product_prob
+                                     )
+            state = np.ones([batch_size, num_nights])*capacity
+            
+            for s in np.arange(start=num_steps-1, stop=0, step=-1):
+                resource = np.stack([product_resource_map[p] for p in demand[s]])
+                
+                admit = policy.do(state, resource, demand[s], s, conf)
                 revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
-                revenue[pol] = revenue[pol] + revenue0
-                state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
-        for r1,r2,r3,r4 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"], revenue["lp_bound"]):
-            print("dnn lift = %.2f"%(r2/r1-1.0)
-                , "lp bound lift = %.2f"%(r4/r1-1.0)
-                , "lpdp lift = %.2f"%(r3/r1-1.0)
-                )      
-        
+                revenue += revenue0
+                state = state - np.multiply(resource, np.reshape(admit, [batch_size,1]))
+#        for r1,r2,r3,r4 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"], revenue["lp_bound"]):
+#            print("dnn lift = %.2f"%(r2/r1-1.0)
+#                , "lp bound lift = %.2f"%(r4/r1-1.0)
+#                , "lpdp lift = %.2f"%(r3/r1-1.0)
+#                )      
+            policy.close()
 #        for r1,r2,in zip(revenue["fifo"], revenue["dnn"]):
 #            print("dnn lift = %.2f"%(r2/r1-1.0))
         
-        for pol in policy_list:
-            print("policy ", pol, " revenue = {:,}".format(np.mean(revenue[pol])))
+#        for pol in policy_list:
+#            print("policy ", pol, " revenue = {:,}".format(np.mean(revenue[pol])))
             
 if __name__ == '__main__':    
 #    for spyder    
