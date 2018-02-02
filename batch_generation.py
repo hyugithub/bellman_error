@@ -62,15 +62,17 @@ def batch_data_prep():
     
     num_processes = 15
     
-    num_batch_gen = 1000
+    num_batch_gen = 10000
     
     conf = dict()
     config.param_init(conf)
-    np.random.seed(54321678)
+    np.random.seed(154321678)
     
     jobs = []            
+
+    model_path = "/home/ubuntu/model/"
     for p in range(num_processes):            
-        fname_output = "".join(["batch_gen.", str(p), ".npz"])    
+        fname_output = "".join([model_path,"batch_gen.", str(p), ".npz"])    
         s = np.random.choice(12345678)
         proc = multiprocessing.Process(target=worker
                                        , args=(fname_output
@@ -88,7 +90,7 @@ def batch_data_prep():
     
     result = [None] * num_processes
     for p in range(num_processes):
-        fname_output = "".join(["batch_gen.", str(p), ".npz"])    
+        fname_output = "".join([model_path,"batch_gen.", str(p), ".npz"])    
         result[p] = np.load(fname_output)
     
     data_lhs = np.stack([result[p]["data_lhs"] for p in range(num_processes)])
@@ -107,7 +109,7 @@ def batch_data_prep():
     lp_bound_rhs_1 = np.reshape(lp_bound_rhs_1, tuple([-1]+list(lp_bound_rhs_1.shape[2:])))
     lp_bound_rhs_2 = np.reshape(lp_bound_rhs_2, tuple([-1]+list(lp_bound_rhs_2.shape[2:])))
     
-    fname = "batch.npz"
+    fname = "".join([model_path, "batch.npz"])
     np.savez(fname
              , data_lhs=data_lhs
              , data_rhs_1=data_rhs_1
