@@ -5,8 +5,8 @@ Created on Sat Jan 27 23:45:18 2018
 @author: hyu
 """
 
-#the purpose of this file is to generate a simple functional
-# approximator to V(s,t)
+#the purpose of this file is to simulate and validate
+#performance of algorithm
 
 import sys
 import numpy as np
@@ -18,6 +18,55 @@ import itertools
 from config import param_init
 from lp_module import lp
 from functional_approximator import *
+from multiprocessing import Pool
+
+def worker(arg):
+    seed, policy_name = arg
+    conf = dict()
+    param_init(conf)
+    
+    if policy_name == "fifo":
+        policy = policy_fifo()
+    if policy_name == "dnn":
+        policy = policy_dnn(conf)
+    if policy_name == "lpdp":
+        #policy = policy_fifo()
+        policy = policy_lpdp(conf)            
+    if policy_name == "lp_bound":
+        policy = policy_lp_bound()            
+    
+    batch_size = conf["batch_size"]
+    num_product = conf["num_product"]
+    num_steps = conf["num_steps"]
+    product_prob = conf["product_prob"]
+    num_nights = conf["num_nights"]
+    capacity = conf["capacity"]
+    product_resource_map = conf["product_resource_map"]
+    product_revenue = conf["product_revenue"]   
+    revenue = np.zeros(batch_size)
+    
+    # for each time step, generate demand
+    np.random.seed(seed)
+    demand = np.random.choice(range(num_product)
+                                , size=(num_steps, batch_size)
+                                , p=product_prob
+                             )
+    state = np.ones([batch_size, num_nights])*capacity
+    
+    for s in np.arange(start=num_steps-1, stop=0, step=-1):
+        resource = np.stack([product_resource_map[p] for p in demand[s]])
+        
+        admit = policy.do(state, resource, demand[s], s, conf)
+        revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
+        revenue += revenue0
+        state = state - np.multiply(resource, np.reshape(admit, [batch_size,1]))
+#        for r1,r2,r3,r4 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"], revenue["lp_bound"]):
+#            print("dnn lift = %.2f"%(r2/r1-1.0)
+#                , "lp bound lift = %.2f"%(r4/r1-1.0)
+#                , "lpdp lift = %.2f"%(r3/r1-1.0)
+#                )      
+    policy.close()
+    return revenue.tolist()
 
 class policy_fifo():      
     def do(self, s, r, p, tstep, param):
@@ -26,6 +75,8 @@ class policy_fifo():
         #p is products batch_size x 1
         #print(type(s), type(r), type(p))
         return (1.0-np.any((s-r)<0, axis=1)).astype(int)
+    def close(self):
+        return
     #EOC
     
 class policy_lpdp():      
@@ -66,6 +117,8 @@ class policy_lpdp():
             if rev >= bid_price:
                 flag2[b] = 1.0
         return np.logical_and(flag, flag2)
+    def close(self):
+        return
     #EOC    
 
 class policy_lp_bound():                  
@@ -75,8 +128,8 @@ class policy_lp_bound():
         product_prob = param["product_prob"]
         capacity = param["capacity"]
         num_steps = param["num_steps"]
-        model = param["model"]
-        sess = param["sess"]
+        #model = param["model"]
+        #sess = param["sess"]
         product_revenue = param["product_revenue"]
         
         # check resource
@@ -112,9 +165,31 @@ class policy_lp_bound():
         
         #print(avail.shape, flag.shape)        
         return np.multiply(avail, flag)
+    def close(self):
+        return
     #EOC    
     
 class policy_dnn():      
+    def __init__(self, param):            
+        param_init(param)           
+        ts = time.time()    
+        # we will need this later
+        #if 0:
+        tf.reset_default_graph()        
+        #build model with variables to be initialized
+        model = error_model_simple_nn(param)
+        model.build()      
+        self.model = model
+        
+        saver = tf.train.Saver()
+        
+        sess = tf.Session() 
+        self.sess = sess
+        #fname_model = "C:/Users/hyu/Desktop/bellman/model/dpdnn.feb-01-2018_16_45_40.ckpt"
+        fname_tensorflow_model = param["fname_tensorflow_model"]
+        # load tensorflow saved model
+        saver.restore(sess, fname_tensorflow_model )        
+        print("Tensorflow model building time = %.2f"%(time.time()-ts))        
     def do(self, s, r, p, tstep, param):
         #load parametrs
         batch_size = param["batch_size"]
@@ -122,8 +197,10 @@ class policy_dnn():
         product_prob = param["product_prob"]
         capacity = param["capacity"]
         num_steps = param["num_steps"]
-        model = param["model"]
-        sess = param["sess"]
+        #model = param["model"]
+        #sess = param["sess"]
+        model = self.model
+        sess = self.sess
         product_revenue = param["product_revenue"]
         
         # check resource
@@ -188,99 +265,68 @@ class policy_dnn():
         
         #return flag
         #EOF
+    def close(self):
+        self.sess.close()
         
     #EOC        
 
-def simulation(param):    
+def simulation():    
+    conf = dict()
+    param_init(conf)
+    batch_size = conf["batch_size"]
+        
     # we should use the same seed for both fifo and new policy 
     # to reduce variance
     #load parameters 
-    seed_simulation = param["seed_simulation"]  
+    seed_simulation = conf["seed_simulation"]  
+    np.random.seed(seed_simulation)
     
-    #policy_list = param["policy_list"]
+    #generate seeds for each batch demand    
+    
+    #policy_list = conf["policy_list"]
     policy_list = ["fifo", "dnn", "lpdp", "lp_bound"]
     #policy_list = ["fifo", "dnn"]
     
     #policy = dict(zip(policy_list,[policy_fifo(), policy_dnn()]))
+            
+    #30 x 64 gives us about 2000 samples 
+    # as part of validation. we think the sample 
+    # mean should be good. not sure about variance
+    #num_iterations = 30
+    num_iterations = 1
     
-    policy = dict()
-    for p in policy_list:
-        if p == "fifo":
-            policy[p] = policy_fifo()
-        if p == "dnn":
-            policy[p] = policy_dnn()
-        if p == "lpdp":
-            #policy[p] = policy_fifo()
-            policy[p] = policy_lpdp(param)            
-        if p == "lp_bound":
-            policy[p] = policy_lp_bound()
-        
-    np.random.seed(seed_simulation)
+    seed_demand = np.random.choice(32452843, [num_iterations]) % 15485863	
+    
     # initial state
     #state_initial = np.ones([batch_size, num_nights])*capacity
-    batch_size = param["batch_size"]
-    num_product = param["num_product"]
-    num_steps = param["num_steps"]
-    product_prob = param["product_prob"]
-    num_nights = param["num_nights"]
-    capacity = param["capacity"]
-    product_resource_map = param["product_resource_map"]
-    product_revenue = param["product_revenue"]    
-    for _ in range(1):        
-        revenue = dict(zip(policy_list, [np.zeros(batch_size)]*len(policy_list)))
-        #revenue["fifo"] = np.zeros(batch_size)
-        #revenue["dnn"]  = np.zeros(batch_size)
-        
-        # for each time step, generate demand
-        demand = np.random.choice(range(num_product)
-                                    , size=(num_steps, batch_size)
-                                    , p=product_prob
-                                 )
-        state = dict(zip(policy_list
-                , [np.ones([batch_size, num_nights])*capacity]*len(policy_list)
-                ))
-        #state["fifo"] = np.ones([batch_size, num_nights])*capacity
-        #state["dnn"] = np.ones([batch_size, num_nights])*capacity
-            
-        for s in np.arange(start=num_steps-1, stop=0, step=-1):
-            resource = np.stack([product_resource_map[p] for p in demand[s]])
-            for pol in policy_list:
-                admit = policy[pol].do(state[pol], resource, demand[s], s, param)
-                revenue0 = np.array([product_revenue[p]*admit[b] for b,p in zip(range(batch_size), demand[s])])
-                revenue[pol] = revenue[pol] + revenue0
-                state[pol] = state[pol] - np.multiply(resource, np.reshape(admit, [batch_size,1]))
-        for r1,r2,r3,r4 in zip(revenue["fifo"], revenue["dnn"], revenue["lpdp"], revenue["lp_bound"]):
-            print("dnn lift = %.2f"%(r2/r1-1.0)
-                , "lp bound lift = %.2f"%(r4/r1-1.0)
-                , "lpdp lift = %.2f"%(r3/r1-1.0)
-                )      
-        
+ 
+    args = []
+    for i in range(num_iterations):         
+        for p in policy_list:
+            args.append((seed_demand[i], p))        
+    num_processors = 7 
+    with Pool(num_processors) as p:
+        #result has dimension of (num_iter x policy) x batch_size
+        result = p.map(worker, args)
+
+    result = np.array(result)
+    result = np.reshape(result, [num_iterations, len(policy_list), batch_size])
+    result = np.swapaxes(result, 0, 1)
+    print(result.shape)
 #        for r1,r2,in zip(revenue["fifo"], revenue["dnn"]):
 #            print("dnn lift = %.2f"%(r2/r1-1.0))
         
-        for pol in policy_list:
-            print("policy ", pol, " revenue = {:,}".format(np.mean(revenue[pol])))
+    print("total revenue:")
+    for k in range(len(policy_list)):
+        print("policy ", policy_list[k], " revenue = %.f"%np.mean(result[k]))
+
+    positive = np.sum( (result[1]-result[2]>=10.0).astype(int))
+    negative = np.sum( (result[1]-result[2]<=-10.0).astype(int))
+    print("Total cases = ", result[1].size, " positive = ", positive, " negative = ", negative)
             
 if __name__ == '__main__':    
 #    for spyder    
     __spec__ = None    
     ts = time.time()
-    conf = dict()
-    param_init(conf)
-        
-    tf.reset_default_graph()
-    
-    #build model with variables to be initialized
-    model = error_model_simple_nn(conf)
-    model.build()
-    conf["model"] = model
-    saver = tf.train.Saver()
-
-    with tf.Session() as sess:
-        conf["sess"] = sess
-        fname_model = "C:/Users/hyu/Desktop/bellman/model/dpdnn.feb-01-2018_03_00_44.ckpt"
-        # load tensorflow saved model
-        saver.restore(sess, fname_model)        
-        
-        simulation(conf)
+    simulation()
     print("total batch data preparation time = %.2f"%(time.time()-ts))
