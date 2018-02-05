@@ -218,6 +218,63 @@ def param_init(param):
         product_prob = np.divide(product_demand,num_steps)
         product_prob[0] = 1.0 - np.sum(product_prob)
         param["product_prob"] = product_prob                
+    
+    if case == 5:    
+        seed_training = 15485357          
+        np.random.seed(seed_training)
+        param["seed_training"] = seed_training
+        
+        seed_simulation = 15485411
+        param["seed_simulation"] = seed_simulation
+        
+        #business parameter initialization
+        num_nights = 21
+        param["num_nights"] = num_nights
+        capacity = 500
+        param["capacity"] = capacity
+        # product zero is the no-revenue no resource product
+        # added for simplicity
+        product_null = 0
+        param["product_null"] = product_null
+        # if there are N nights, adding product null gives us 3N-2 products
+        # product 0 is null product 
+        # product 1~N are 1-night
+        # product N+1~2N-1 are 2-nighter
+        # product 2N ~3N-3 are 3-nighter
+        num_product = num_nights*3-2
+        param["num_product"] = num_product
+        product_resource_map = np.zeros((num_product, num_nights))
+        for i in range(1, num_nights+1):    
+            product_resource_map[i][i-1] = 1.0        
+        for i in range(num_nights+1, 2*num_nights):            
+            product_resource_map[i][i-num_nights-1] = 1.0
+            product_resource_map[i][i-num_nights] = 1.0
+        for i in range(2*num_nights, 3*num_nights-2):
+            product_resource_map[i][i-2*num_nights] = 1.0
+            product_resource_map[i][i-2*num_nights+1] = 1.0
+            product_resource_map[i][i-2*num_nights+2] = 1.0        
+        #product_resource_map[num_product-1][num_nights-1] = 1.0    
+        param["product_resource_map"] = product_resource_map
+        
+        #roughly speaking the price is a few hundred dollars
+        product_revenue = 1000*np.random.uniform(size=[num_product])
+        product_revenue[product_null] = 0
+        param["product_revenue"] = product_revenue
+        #total demand
+        product_demand = np.random.uniform(size=[num_product])*capacity
+        product_demand[product_null]  = 0
+        param["product_demand"] = product_demand
+    
+        #total arrival rate should be less than or equal to 0.01
+        #thus we get num of steps
+        num_steps = int(np.max(product_demand)/0.01)
+        param["num_steps"] = num_steps
+        
+        #arrival rate (including product null)
+        product_prob = np.divide(product_demand,num_steps)
+        product_prob[0] = 1.0 - np.sum(product_prob)
+        param["product_prob"] = product_prob                        
+        
 
     #all output files should have a timepstamp regardless
     # this way we can always sort out different version
