@@ -323,6 +323,9 @@ def simulation():
     positive = np.sum( (result[1]-result[2]>=10.0).astype(int))
     negative = np.sum( (result[1]-result[2]<=-10.0).astype(int))
     print("Total cases = ", result[1].size, " positive = ", positive, " negative = ", negative)
+    
+    fname_validation = conf["fname_validation"]
+    np.save(fname_validation, result)
             
 if __name__ == '__main__':    
 #    for spyder    
