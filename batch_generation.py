@@ -63,7 +63,7 @@ def batch_data_prep():
     
     num_processes = 15
     
-    num_batch_gen = 1000
+    num_batch_gen = 2000
     
     conf = dict()
     config.param_init(conf)
