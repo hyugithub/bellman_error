@@ -18,7 +18,7 @@ def param_init(param):
     
     param["case"] = case
     
-    if case == 2:    
+    if case == 1:    
         seed_training = 4321          
         np.random.seed(seed_training)
         param["seed_training"] = seed_training
