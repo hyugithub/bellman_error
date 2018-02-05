@@ -56,13 +56,14 @@ def worker(fname, num_batch_gen, seed):
              , lp_bound_rhs_2=lp_bound_rhs_2            
              )
     
+    print("done worker ", seed)
     return 0
 
 def batch_data_prep():    
     
-    num_processes = 15
+    num_processes = 2
     
-    num_batch_gen = 1000
+    num_batch_gen = 10
     
     conf = dict()
     config.param_init(conf)
@@ -186,7 +187,7 @@ def batch_data_load():
 # sample for writing and reading
 if __name__ == '__main__':
 #    for spyder    
-#    __spec__ = None
+    __spec__ = None
     ts = time.time()
     batch_data_prep()
     print("total batch data preparation time = %.2f"%(time.time()-ts))

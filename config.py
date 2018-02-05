@@ -123,7 +123,7 @@ def param_init(param):
     init_level_output = 1.0
     param["init_level_output"] = init_level_output
     
-    num_batches_training = 100
+    num_batches_training = 1000
     param["num_batches_training"] = num_batches_training            
     
     save_param(param)
