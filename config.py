@@ -219,6 +219,9 @@ def param_init(param):
     fname_npz = "".join([model_path, "batch_b64.npz"])
     param["fname_npz"] = fname_npz
     
+    fname_validation = "".join([model_path, "simulation.", timestamp, ".npz"])
+    param["fname_validation"] = fname_validation    
+    
     debug_lp = 1
     param["debug_lp"] = debug_lp
 
@@ -266,6 +269,6 @@ def save_param(param):
         json.dump(tmp, fp)    
 
 #testing
-if 1:
+if 0:
     conf = dict()
     param_init(conf)    
