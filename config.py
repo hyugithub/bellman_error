@@ -571,7 +571,7 @@ def param_init(param):
     param["fname_policy_output"] = fname_policy_output    
     
     #tensorflow model
-    fname_tensorflow_model = "".join([model_path, "dpdnn.feb-01-2018_16_45_40.ckpt"])
+    fname_tensorflow_model = "".join([model_path, "dpdnn.ckpt"])
     param["fname_tensorflow_model"] = fname_tensorflow_model
     
     fname_json = "".join([model_path, "dpdnn.", timestamp, ".json"])
