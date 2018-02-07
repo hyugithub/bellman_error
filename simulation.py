@@ -304,7 +304,7 @@ def simulation():
     for i in range(num_iterations):         
         for p in policy_list:
             args.append((seed_demand[i], p))        
-    num_processors = 7 
+    num_processors = 14
     with Pool(num_processors) as p:
         #result has dimension of (num_iter x policy) x batch_size
         result = p.map(worker, args)
